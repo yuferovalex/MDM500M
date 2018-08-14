@@ -18,7 +18,7 @@ void EventLog::initialMessage(DeviceErrors log)
     m_file->setFileName(QString("%1_%2.log")
                         .arg(m_device.serialNumber().toString())
                         .arg(QDate::currentDate().toString("dd.MM.yyyy")));
-    if (!m_file->open(QIODevice::WriteOnly | QIODevice::Append)) {
+    if (!m_file->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append)) {
         return;
     }
     m_out.setDevice(m_file);

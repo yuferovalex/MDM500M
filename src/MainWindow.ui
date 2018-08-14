@@ -18,11 +18,13 @@
   </property>
   <property name="styleSheet">
    <string notr="true">#mainWindowHeader {
-	background-color: #3A6AB4;
+	background-color: qlineargradient(spread:pad, x1:0, y1:1, x2:0, y2:0, stop:0 #C3E0FC, stop:1 #E1F1FE);
+   border-bottom: 5px solid #198ECA;
 }
 
 #mainWindowHeader &gt; .QLabel {
-	color: white;
+	color: #0F266D;
+	font: bold &quot;Verdana&quot;;
 }
 
 #mainWindowEmptyLbl {
@@ -76,9 +78,9 @@
        <widget class="QLabel" name="title">
         <property name="font">
          <font>
-          <family>Segoe UI Black</family>
           <pointsize>16</pointsize>
-          <italic>true</italic>
+          <weight>75</weight>
+          <bold>true</bold>
          </font>
         </property>
         <property name="text">
@@ -101,6 +103,14 @@
       </item>
       <item>
        <widget class="QLabel" name="version">
+        <property name="font">
+         <font>
+          <pointsize>10</pointsize>
+          <weight>75</weight>
+          <italic>false</italic>
+          <bold>true</bold>
+         </font>
+        </property>
         <property name="text">
          <string>v. 3.1.0</string>
         </property>

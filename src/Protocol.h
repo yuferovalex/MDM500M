@@ -82,7 +82,7 @@ private:
     static constexpr uint8_t minSize = 2;
     static constexpr uint8_t marker  = 0xA5;
     static constexpr std::chrono::milliseconds writeTimeout { 500 };
-    static constexpr std::chrono::milliseconds readTimeout { 500 };
+    static constexpr std::chrono::milliseconds readTimeout { 1000 };
 
     bool configure();
     uint8_t getch();

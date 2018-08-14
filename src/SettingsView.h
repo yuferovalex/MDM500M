@@ -71,7 +71,7 @@ class ConfigViewModel : public QAbstractTableModel
     Q_OBJECT
 
 public:
-    enum Columns { Type, Status, Channel, ScaleLevel, SignalLevel, ColumnsCount };
+    enum Columns { Type, Status, Frequency, Channel, Diagnostic, ScaleLevel, SignalLevel, ColumnsCount };
 
     ConfigViewModel(Device &device, QObject *parent);
     int rowCount(const QModelIndex &parent) const override;

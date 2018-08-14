@@ -30,9 +30,9 @@ SettingsView::SettingsView(std::unique_ptr<Driver> &&driver,
     ui->setupUi(this);
     setInterfaceEnabled(false);
     ui->configTable->setModel(new ConfigViewModel(m_device, ui->configTable));
-    ui->configTable->verticalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    //ui->configTable->verticalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     ui->configTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-
+    ui->updateFirmwareBtn->hide();
     initModel();
 }
 
@@ -308,6 +308,9 @@ QVariant ConfigViewModel::data(const QModelIndex &index, int role) const
     if (!index.isValid()) {
         return QVariant();
     }
+    if (role == Qt::ToolTipRole) {
+        role = Qt::DisplayRole;
+    }
     if (role == Qt::TextAlignmentRole) {
         return Qt::AlignCenter;
     }
@@ -335,12 +338,16 @@ QVariant ConfigViewModel::data(const QModelIndex &index, int role) const
     if (module.isEmpty()) {
         return QVariant();
     }
+    if (index.column() == Frequency && role == Qt::DisplayRole) {
+        return QString::number(MegaHertzReal(module.frequency()).count(), 'f', 2);
+    }
     if (index.column() == Channel && role == Qt::DisplayRole) {
-        auto c = module.channel();
-        auto f = QString::number(frequency_cast<MegaHertzReal>(module.frequency()).count(), 'f', 2);
-        return c.isEmpty()
-             ? QString("%1 МГц").arg(f)
-             : QString("CH %1 (%2 МГц)").arg(c).arg(f);
+        return module.channel().isEmpty()
+             ? QString("-")
+             : module.channel();
+    }
+    if (index.column() == Diagnostic && role == Qt::DisplayRole) {
+        return module.isDiagnosticEnabled() ? tr("Вкл") : tr("Выкл");
     }
     if (index.column() == ScaleLevel || index.column() == SignalLevel) {
         switch (role) {
@@ -384,7 +391,9 @@ QVariant ConfigViewModel::headerData(int section, Qt::Orientation orientation, i
             switch (section) {
             case Type        : return tr("Тип");
             case Status      : return tr("Состояние");
+            case Frequency   : return tr("Частота, МГц");
             case Channel     : return tr("Канал");
+            case Diagnostic  : return tr("Диагностика");
             case ScaleLevel  : return tr("Оценка уровня\nсигнала");
             case SignalLevel : return tr("Уровень сигнала,\nдБмкВ");
             }
@@ -399,24 +408,33 @@ void ConfigViewModel::onModuleReplaced(Module *module)
     connect(module, &Module::frequencyChanged, this, [=]
     {
         emit dataChanged(index(slot, Channel), index(slot, Channel),
-                         QVector<int>() << Qt::DisplayRole);
+                         QVector<int>()
+                         << Qt::DisplayRole
+                         << Qt::ToolTipRole);
     });
     connect(module, &Module::channelChanged, this, [=]
     {
         emit dataChanged(index(slot, Channel), index(slot, Channel),
-                         QVector<int>() << Qt::DisplayRole);
+                         QVector<int>()
+                         << Qt::DisplayRole
+                         << Qt::ToolTipRole);
     });
     connect(module, &Module::signalLevelChanged, this, [=]
     {
         emit dataChanged(index(slot, ScaleLevel), index(slot, SignalLevel),
-                         QVector<int>() << Qt::DisplayRole);
+                         QVector<int>()
+                         << Qt::DisplayRole
+                         << Qt::ToolTipRole);
     });
     connect(module, &Module::errorsChanged, this, [=]
     {
         emit dataChanged(index(slot, Status), index(slot, Status),
-                         QVector<int>() << Qt::DisplayRole << Qt::BackgroundRole);
+                         QVector<int>()
+                         << Qt::DisplayRole
+                         << Qt::ToolTipRole
+                         << Qt::BackgroundRole);
     });
 
-    emit dataChanged(index(slot, 0), index(slot, ColumnsCount), QVector<int>() << Qt::DisplayRole);
+    emit dataChanged(index(slot, 0), index(slot, ColumnsCount), QVector<int>() << Qt::DisplayRole << Qt::ToolTipRole);
     emit dataChanged(index(slot, Status), index(slot, Status), QVector<int>() << Qt::BackgroundRole);
 }

@@ -1,3 +1,4 @@
+#include <QComboBox>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QMouseEvent>
@@ -26,9 +27,11 @@ void ModuleView::setup()
 {
     setStyleSheet
     (
-        "#scaleLevel, #moduleStatus, #signalLevel, #header, #moduleConfigHeader {\n"
+        "#scaleLevel, #moduleStatus, #signalLevel, #header, #moduleConfigHeader,"
+        " #stereoStatus, #rdsStatus {\n"
         "	color: #3A6AB4;\n"
         "   font-weight: 900;\n"
+        "   font-size: 12pt;\n"
         "}\n"
         "#header, #moduleConfigHeader {\n"
         "   font-size: 14pt;\n"
@@ -223,32 +226,17 @@ void DM500FMView::onVolumeEditingFinished()
 void DM500FMView::onRdsChanged(bool on)
 {
     QString text = on
-            ? tr("Во входном сигнале обнаружено наличие RDS")
-            : tr("Во входном сигнале наличие RDS не обнаружено");
+            ? tr("Есть")
+            : tr("Нет");
     ui->rdsStatus->setText(text);
-    setColor(ui->rdsStatus, on);
 }
 
 void DM500FMView::onStereoChanged(bool on)
 {
     QString text = on
-            ? tr("Во входном сигнале обнаружено наличие стереомодуляции")
-            : tr("Во входном сигнале стереомодуляции не обнаружено");
+            ? tr("Стерео")
+            : tr("Моно");
     ui->stereoStatus->setText(text);
-    setColor(ui->stereoStatus, on);
-}
-
-void DM500FMView::setColor(QLabel *label, bool on)
-{
-    label->setStyleSheet
-    (
-        QString(
-            "QLabel {\n"
-            "	color: %1;\n"
-            "   font-weight: 900;\n"
-            "}"
-        ).arg(on ? "#3A6AB4" : "#727272")
-    );
 }
 
 ModuleView *ModuleViewFabricImpl::produce(Module *module, QWidget *parent)

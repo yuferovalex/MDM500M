@@ -8,29 +8,29 @@
 
 const char *Scale::m_colors[10]
 {
-    "#CC0000",
-    "#CC0000",
-    "#F2B705",
-    "#F2B705",
-    "#09A504",
-    "#09A504",
-    "#09A504",
-    "#09A504",
-    "#09A504",
+    "#FF0066",
+    "#FF0000",
+    "#FFCC99",
+    "#FFFF00",
+    "green",
+    "#99CC00",
+    "#99CC00",
+    "#99CC00",
+    "#B2CC6B",
     "white"
 };
 
 const char *Scale::m_disabledColors[10]
 {
-    "#4D0000",
-    "#4D0000",
-    "#332701",
-    "#332701",
-    "#033301",
-    "#033301",
-    "#033301",
-    "#033301",
-    "#033301",
+    "lightgray",
+    "lightgray",
+    "lightgray",
+    "lightgray",
+    "lightgray",
+    "lightgray",
+    "lightgray",
+    "lightgray",
+    "lightgray",
     "lightgray"
 };
 

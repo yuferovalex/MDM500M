@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>578</width>
-    <height>515</height>
+    <width>609</width>
+    <height>509</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -32,7 +32,11 @@
    <item>
     <widget class="QStackedWidget" name="stackedWidget">
      <property name="styleSheet">
-      <string notr="true">#serialNumber, #softwareVersion, #deviceMainHeader, #deviceConfigHeader {
+      <string notr="true">.QLabel {
+	font-size: 12pt;
+}
+
+#serialNumber, #softwareVersion, #deviceMainHeader, #deviceConfigHeader {
 	font-weight: 900;
 	color: #3A6AB4;
 }
@@ -63,7 +67,7 @@
        <item>
         <layout class="QFormLayout" name="formLayout">
          <item row="0" column="0">
-          <widget class="QLabel" name="deviceNameLabel_4">
+          <widget class="QLabel" name="deviceNameLabel">
            <property name="sizePolicy">
             <sizepolicy hsizetype="Expanding" vsizetype="Minimum">
              <horstretch>0</horstretch>
@@ -75,11 +79,6 @@
              <width>0</width>
              <height>30</height>
             </size>
-           </property>
-           <property name="font">
-            <font>
-             <pointsize>12</pointsize>
-            </font>
            </property>
            <property name="text">
             <string>Имя устройства</string>
@@ -108,7 +107,7 @@
           </widget>
          </item>
          <item row="1" column="0">
-          <widget class="QLabel" name="deviceSerialNumberLabel_4">
+          <widget class="QLabel" name="deviceSerialNumberLabel">
            <property name="sizePolicy">
             <sizepolicy hsizetype="Expanding" vsizetype="Minimum">
              <horstretch>0</horstretch>
@@ -120,11 +119,6 @@
              <width>0</width>
              <height>30</height>
             </size>
-           </property>
-           <property name="font">
-            <font>
-             <pointsize>12</pointsize>
-            </font>
            </property>
            <property name="text">
             <string>Серийный номер</string>
@@ -139,20 +133,13 @@
              <verstretch>0</verstretch>
             </sizepolicy>
            </property>
-           <property name="font">
-            <font>
-             <pointsize>12</pointsize>
-             <weight>99</weight>
-             <bold>true</bold>
-            </font>
-           </property>
            <property name="text">
             <string notr="true">Н/Д</string>
            </property>
           </widget>
          </item>
          <item row="2" column="0">
-          <widget class="QLabel" name="deviceSoftwareVersionLabel_4">
+          <widget class="QLabel" name="deviceSoftwareVersionLabel">
            <property name="sizePolicy">
             <sizepolicy hsizetype="Expanding" vsizetype="Minimum">
              <horstretch>0</horstretch>
@@ -165,76 +152,65 @@
              <height>30</height>
             </size>
            </property>
-           <property name="font">
-            <font>
-             <pointsize>12</pointsize>
-            </font>
-           </property>
            <property name="text">
             <string>Версия ПО</string>
            </property>
           </widget>
          </item>
          <item row="2" column="1">
-          <layout class="QHBoxLayout" name="horizontalLayout">
-           <property name="spacing">
-            <number>10</number>
-           </property>
-           <item>
-            <widget class="QLabel" name="softwareVersion">
-             <property name="font">
-              <font>
-               <pointsize>12</pointsize>
-               <weight>99</weight>
-               <bold>true</bold>
-              </font>
-             </property>
-             <property name="text">
-              <string notr="true">Н/Д</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QPushButton" name="updateFirmwareBtn">
-             <property name="font">
-              <font>
-               <pointsize>12</pointsize>
-              </font>
-             </property>
-             <property name="text">
-              <string>Обновить</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <spacer name="horizontalSpacer">
-             <property name="orientation">
-              <enum>Qt::Horizontal</enum>
-             </property>
-             <property name="sizeHint" stdset="0">
-              <size>
-               <width>40</width>
-               <height>20</height>
-              </size>
-             </property>
-            </spacer>
-           </item>
-          </layout>
+          <widget class="QWidget" name="softVerWrapper" native="true">
+           <layout class="QHBoxLayout" name="horizontalLayout">
+            <property name="spacing">
+             <number>10</number>
+            </property>
+            <property name="leftMargin">
+             <number>0</number>
+            </property>
+            <property name="topMargin">
+             <number>0</number>
+            </property>
+            <property name="rightMargin">
+             <number>0</number>
+            </property>
+            <property name="bottomMargin">
+             <number>0</number>
+            </property>
+            <item>
+             <widget class="QLabel" name="softwareVersion">
+              <property name="text">
+               <string notr="true">Н/Д</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="updateFirmwareBtn">
+              <property name="font">
+               <font>
+                <pointsize>12</pointsize>
+               </font>
+              </property>
+              <property name="text">
+               <string>Обновить</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="horizontalSpacer">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </widget>
          </item>
         </layout>
-       </item>
-       <item>
-        <spacer name="spacer">
-         <property name="sizeType">
-          <enum>QSizePolicy::Fixed</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>20</width>
-           <height>15</height>
-          </size>
-         </property>
-        </spacer>
        </item>
        <item>
         <layout class="QHBoxLayout" name="horizontalLayout_14">
@@ -289,7 +265,6 @@
          </property>
          <property name="font">
           <font>
-           <family>Tahoma</family>
            <pointsize>12</pointsize>
           </font>
          </property>
