@@ -1,10 +1,6 @@
 QT += gui widgets serialport
 
-TARGET = app
-
 CONFIG += c++14
-#CONFIG += console
-#CONFIG -= app_bundle
 
 # The following define makes your compiler emit warnings if you use
 # any feature of Qt which as been marked deprecated (the exact warnings
@@ -17,23 +13,31 @@ DEFINES += QT_DEPRECATED_WARNINGS
 # You can also select to disable deprecated APIs only up to a certain version of Qt.
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
-VERSION = 3.1.0
+VER_MAJ=3
+VER_MIN=1
+VER_PAT=0
+VERSION = $${VER_MAJ}.$${VER_MIN}.$${VER_PAT}
+DEFINES += VER_MAJ=$$VER_MAJ
+DEFINES += VER_MIN=$$VER_MIN
+DEFINES += VER_PAT=$$VER_PAT
+DEFINES += VERSION_STR=\\\"$$VERSION\\\"
+TARGET = MDM500M_$$VERSION
 
-win32 {
-    QMAKE_TARGET_COMPANY = ������
-    QMAKE_TARGET_DESCRIPTION = ��������� ��� ��������� ��������� ���-500�
-    QMAKE_TARGET_COPYRIGHT = (c) 2018 $$QMAKE_TARGET_COMPANY
-    QMAKE_TARGET_PRODUCT = ���-500(�) $$VERSION
-    # Russian (Ru)
-    RC_LANG = 0x0419
-    RC_ICONS = $$PWD/img/icon.ico
+RC_FILE = app_resource.rc
 
+!contains(QMAKE_TARGET.arch, x86_64) {
+    message(Support of WinXP: ENABLED)
     # WinXP32
     DEFINES += _ATL_XP_TARGETING
     DEFINES += PSAPI_VERSION=1
     QMAKE_LFLAGS_WINDOWS = /SUBSYSTEM:WINDOWS,5.01
     #end WinXP32
+    DESTDIR = $$PWD/../bin
+} else {
+    message(Support of WinXP: DISABLED)
 }
+
+OTHER_FILES = app_resource.rc
 
 HEADERS += \
     Types.h \
@@ -79,11 +83,6 @@ FORMS += \
     DM500View.ui \
     DM500FMView.ui \
     DM500MView.ui
-
-# Default rules for deployment.
-qnx: target.path = /tmp/$${TARGET}/bin
-else: unix:!android: target.path = /opt/$${TARGET}/bin
-!isEmpty(target.path): INSTALLS += target
 
 RESOURCES += \
     resources.qrc
