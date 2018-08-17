@@ -3,7 +3,11 @@
 #include <QSerialPort>
 
 #include "Cancelation.h"
+#include "Firmware.h"
 #include "Types.h"
+
+class Protocol;
+class UpdaterProtocol;
 
 class Command : public QObject
 {
@@ -138,3 +142,36 @@ signals:
 private:
     DeviceConfig m_config;
 };
+
+class UpdateFirmware : public Command
+{
+    Q_OBJECT
+
+public:
+    enum Status
+    {
+        Reboot,
+        Flash,
+        WaitForBoot
+    };
+    Q_ENUM(Status)
+
+    UpdateFirmware(Firmware firmware);
+    void exec(QSerialPort &port, CancelToken canceled) override;
+
+signals:
+    void started();
+    void success();
+    void statusChanged(UpdateFirmware::Status status);
+    void progressChanged(int progress);
+    void progressMaxChanged(int progressMax);
+    void failure();
+
+private:
+    bool flash(UpdaterProtocol &boot);
+    void waitForFirmware(Protocol &proto);
+    void reboot(Protocol &proto);
+
+    Firmware m_firmware;
+};
+

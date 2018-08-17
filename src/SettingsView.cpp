@@ -3,8 +3,11 @@
 
 #include <QFile>
 #include <QFileDialog>
+#include <QMessageBox>
 #include <QTimer>
+#include <QProgressDialog>
 
+#include "Firmware.h"
 #include "Commands.h"
 #include "ChannelTable.h"
 #include "Driver.h"
@@ -30,9 +33,17 @@ SettingsView::SettingsView(std::unique_ptr<Driver> &&driver,
     ui->setupUi(this);
     setInterfaceEnabled(false);
     ui->configTable->setModel(new ConfigViewModel(m_device, ui->configTable));
-    //ui->configTable->verticalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     ui->configTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-    ui->updateFirmwareBtn->hide();
+
+    auto max = std::max({
+        ui->deviceNameLabel->height(),
+        ui->deviceSerialNumberLabel->height(),
+        ui->deviceSoftwareVersionLabel->height()
+    });
+    ui->deviceNameLabel->setMinimumHeight(max);
+    ui->deviceSerialNumberLabel->setMinimumHeight(max);
+    ui->deviceSoftwareVersionLabel->setMinimumHeight(max);
+
     initModel();
 }
 
@@ -100,6 +111,10 @@ void SettingsView::initModel()
 
 void SettingsView::updateModel()
 {
+    if (m_breakUpdateLoop) {
+        m_breakUpdateLoop = false;
+        return ;
+    }
     qDebug("начато обновление модели");
     auto cmd = new UpdateDeviceInfo;
     connect(cmd, &UpdateDeviceInfo::success, this, [=](auto &&response)
@@ -115,6 +130,57 @@ void SettingsView::updateModel()
         qDebug("произошло отключение во время обновления модели");
         emit disconnected();
     });
+    m_driver->exec(cmd);
+}
+
+void SettingsView::update(const Firmware &firmware)
+{
+    auto cmd = new UpdateFirmware(firmware);
+    auto dialog = new QProgressDialog(this, Qt::Window | Qt::WindowTitleHint);
+
+    dialog->setMinimum(0);
+    dialog->setCancelButton(nullptr);
+    dialog->setModal(true);
+    dialog->setAutoClose(false);
+    dialog->setAutoReset(false);
+    dialog->setWindowTitle(tr("Прошивка"));
+
+    connect(cmd, &UpdateFirmware::started, dialog, &QProgressDialog::show);
+    connect(cmd, &UpdateFirmware::success, this, [=]
+    {
+        dialog->deleteLater();
+        QMessageBox::information(this, QString(), tr("Устройство успешно перепрошито"));
+        initModel();
+    });
+    connect(cmd, &UpdateFirmware::failure, this, [=]
+    {
+        dialog->deleteLater();
+        QMessageBox::critical(this, QString(), tr("Во время перепрошивки произошла ошибка"));
+        initModel();
+    });
+    connect(cmd, &UpdateFirmware::statusChanged, dialog, [=](auto status)
+    {
+        QString text;
+        switch (status) {
+        case UpdateFirmware::WaitForBoot:
+            text = tr("Ожидание загрузки");
+            break;
+        case UpdateFirmware::Reboot:
+            text = tr("Перезагрузка");
+            break;
+        case UpdateFirmware::Flash:
+            text = tr("Передача прошивки на устройство");
+            break;
+        default:
+            Q_ASSERT(false);
+            return ;
+        }
+        dialog->setLabelText(text);
+    });
+    connect(cmd, &UpdateFirmware::progressChanged, dialog, &QProgressDialog::setValue);
+    connect(cmd, &UpdateFirmware::progressMaxChanged, dialog, &QProgressDialog::setMaximum);
+
+    m_breakUpdateLoop = true;
     m_driver->exec(cmd);
 }
 
@@ -204,16 +270,50 @@ void SettingsView::on_saveChangesBtn_clicked()
     m_driver->exec(cmd);
 }
 
-#include <QMessageBox>
-#define UNRELEASED() \
-    do { \
-        QMessageBox::warning(this, QString(), "Эта фукция не реализована"); \
-        return ; \
-    } while(false)
-
 void SettingsView::on_updateFirmwareBtn_clicked()
 {
-    UNRELEASED();
+    auto filename = QFileDialog::getOpenFileName(this, QString(), QString(), "BSK (*.bsk)");
+    if (filename.isEmpty()) return;
+    Firmware firmware(filename);
+    if (firmware.isError()) {
+        QMessageBox::warning(this,
+                             QString(),
+                             tr("Произошла ошибка при открытии файла прошивки: %1")
+                             .arg(firmware.errorString()));
+        return ;
+    }
+    if (!firmware.isCompatible(kMDM500MHardwareVersion)) {
+        QMessageBox::warning(this,
+                             QString(),
+                             tr("Прошивка в данном файле не предназначена для этого устройства."));
+        return ;
+    }
+    if (firmware.softwareVersion() < m_device.softwareVersion()) {
+        int answer = QMessageBox::question
+        (
+            this,
+            "",
+            tr("Вы пытаетесь понизить версию прошивки устройства.\n\n"
+               "Продолжить?"),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No
+        );
+        if (answer != QMessageBox::Yes) { return ; }
+    }
+    if (firmware.softwareVersion() == m_device.softwareVersion()) {
+        int answer = QMessageBox::question
+        (
+            this,
+            "",
+            tr("Выбранная прошивка уже установлена на устройство.\n\n"
+               "Продолжить?"),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No
+        );
+        if (answer != QMessageBox::Yes) { return ; }
+    }
+
+    update(firmware);
 }
 
 void SettingsView::on_createBackupBtn_clicked()
@@ -357,7 +457,7 @@ QVariant ConfigViewModel::data(const QModelIndex &index, int role) const
                  : module.isSupportSignalLevel() ? QString::number(module.signalLevel())
                                                  : QString("-");
         case Qt::ForegroundRole:
-            return QBrush(Qt::blue);
+            return QBrush("#3A6AB4");
         case Qt::FontRole: {
             QFont font;
             font.setBold(true);
