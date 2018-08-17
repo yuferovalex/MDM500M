@@ -15,14 +15,7 @@ EventLog::EventLog(Device &device, QObject *parent)
 
 void EventLog::initialMessage(DeviceErrors log)
 {
-    m_file->setFileName(QString("%1_%2.log")
-                        .arg(m_device.serialNumber().toString())
-                        .arg(QDate::currentDate().toString("dd.MM.yyyy")));
-    if (!m_file->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append)) {
-        return;
-    }
-    m_out.setDevice(m_file);
-
+    open();
     out() << tr("Начало работы с устройством \"%1\"").arg(m_device.name()) << endl;
     out() << tr("Серийный номер:  %1").arg(m_device.serialNumber().toString()) << endl;
     out() << tr("Версия прошивки: %1").arg(m_device.softwareVersion().toString()) << endl;
@@ -103,4 +96,17 @@ QTextStream &EventLog::out()
 QString EventLog::date() const
 {
     return QDateTime::currentDateTime().toString("dd.MM.yyyy hh:mm:ss");
+}
+
+void EventLog::open()
+{
+    if (!m_file->isOpen()) {
+        m_file->setFileName(QString("%1_%2.log")
+                            .arg(m_device.serialNumber().toString())
+                            .arg(QDate::currentDate().toString("dd.MM.yyyy")));
+        if (!m_file->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append)) {
+            return;
+        }
+        m_out.setDevice(m_file);
+    }
 }

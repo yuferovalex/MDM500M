@@ -15,7 +15,7 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 VER_MAJ=3
 VER_MIN=1
-VER_PAT=0
+VER_PAT=1
 VERSION = $${VER_MAJ}.$${VER_MIN}.$${VER_PAT}
 DEFINES += VER_MAJ=$$VER_MAJ
 DEFINES += VER_MIN=$$VER_MIN
@@ -26,15 +26,17 @@ TARGET = MDM500M_$$VERSION
 RC_FILE = app_resource.rc
 
 !contains(QMAKE_TARGET.arch, x86_64) {
-    message(Support of WinXP: ENABLED)
     # WinXP32
     DEFINES += _ATL_XP_TARGETING
     DEFINES += PSAPI_VERSION=1
     QMAKE_LFLAGS_WINDOWS = /SUBSYSTEM:WINDOWS,5.01
     #end WinXP32
-    DESTDIR = $$PWD/../bin
-} else {
-    message(Support of WinXP: DISABLED)
+    CONFIG(release, debug|release) {
+        DEFINES += QT_NO_DEBUG_OUTPUT
+        DEFINES += QT_NO_INFO_OUTPUT
+        DEFINES += QT_NO_WARNING_OUTPUT
+        DESTDIR = $$PWD/../bin
+    }
 }
 
 OTHER_FILES = app_resource.rc
@@ -56,7 +58,10 @@ HEADERS += \
     ModuleViews.h \
     NameRepository.h \
     XmlSerializer.h \
-    EventLog.h
+    EventLog.h \
+    BootLoad.h \
+    UpdaterProtocol.h \
+    Firmware.h
 
 SOURCES += \
     main.cpp \
@@ -74,7 +79,9 @@ SOURCES += \
     ModuleViews.cpp \
     NameRepository.cpp \
     XmlSerializer.cpp \
-    EventLog.cpp
+    EventLog.cpp \
+    UpdaterProtocol.cpp \
+    Firmware.cpp
 
 FORMS += \
     MainWindow.ui \

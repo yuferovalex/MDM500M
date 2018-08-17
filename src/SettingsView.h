@@ -15,6 +15,7 @@ class SettingsView;
 class ModuleView;
 class NameRepository;
 class EventLog;
+class Firmware;
 
 class ModuleViewFabric
 {
@@ -52,6 +53,7 @@ private slots:
 private:
     void initModel();
     void updateModel();
+    void update(const Firmware &firmware);
     void setThresholdLevels();
     void setModuleConfig(int slot);
 
@@ -64,6 +66,7 @@ private:
     std::unique_ptr<Ui::SettingsView> ui;
     std::unique_ptr<Driver> m_driver;
     EventLog *m_log;
+    bool m_breakUpdateLoop = false;
 };
 
 class ConfigViewModel : public QAbstractTableModel

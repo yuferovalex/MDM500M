@@ -24,6 +24,7 @@ private:
     QTextStream &out();
     QString date() const;
 
+    void open();
     void subscribe();
     void reportOldErrors(DeviceErrors log);
     void reportCurrentErrors();

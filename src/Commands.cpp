@@ -3,6 +3,8 @@
 
 #include "Commands.h"
 #include "Protocol.h"
+#include "Firmware.h"
+#include "UpdaterProtocol.h"
 
 #define CHECK(received)        \
     do {                       \
@@ -176,4 +178,77 @@ void SaveConfigToEprom::exec(QSerialPort &port, CancelToken cancelled)
     case Protocol::Error::WrongParam     : return emit wrongParametersDetected();
     case Protocol::Error::CantWrite      : return emit deviceCorruptionDetected();
     }
+}
+
+UpdateFirmware::UpdateFirmware(Firmware firmware)
+    : m_firmware(firmware)
+{
+    qRegisterMetaType<Status>();
+}
+
+void UpdateFirmware::exec(QSerialPort &port, CancelToken)
+{
+    Protocol proto(port);
+    UpdaterProtocol boot(port);
+
+    emit started();
+
+    reboot(proto);
+    if (!flash(boot)) {
+        return emit failure();
+    }
+    waitForFirmware(proto);
+    reboot(proto);
+    waitForFirmware(proto);
+
+    emit success();
+}
+
+bool UpdateFirmware::flash(UpdaterProtocol &boot)
+{
+    emit statusChanged(Flash);
+    emit progressMaxChanged(m_firmware.pageCount() - 1);
+    emit progressChanged(0);
+
+    int requestedPage = 0;
+    while (requestedPage < m_firmware.pageCount() - 1) {
+        requestedPage = boot.waitForRequest();
+        if (requestedPage == -1) {
+            return false;
+        }
+        qDebug("UpdateFirmware::flash(): запрошена страница %d", (int) requestedPage);
+        if (!boot.writePage(requestedPage, m_firmware.pageSizeLog2(),
+                            m_firmware.page(requestedPage))) {
+            return false;
+        }
+        qDebug("UpdateFirmware::flash(): страница %d передана", (int) requestedPage);
+        emit progressChanged(requestedPage);
+    }
+    return true;
+}
+
+void UpdateFirmware::waitForFirmware(Protocol &proto)
+{
+    emit statusChanged(WaitForBoot);
+    emit progressMaxChanged(0);
+    emit progressChanged(-1);
+
+    DeviceInfo info;
+    do {
+        QThread::msleep(2500);
+    }
+    while (!proto.get(Protocol::Command::ReadInfo, info));
+    qDebug("UpdateFirmware::reboot(): устройство загружено");
+}
+
+void UpdateFirmware::reboot(Protocol &proto)
+{
+    emit statusChanged(Reboot);
+    emit progressMaxChanged(0);
+    emit progressChanged(-1);
+
+    Protocol::Error err;
+    proto.set(Protocol::Command::Reboot, err);
+    Q_ASSERT(err == Protocol::Error::Ok);
+    qDebug("UpdateFirmware::reboot(): устройство перезагружено");
 }

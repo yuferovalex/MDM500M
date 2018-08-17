@@ -16,9 +16,7 @@ MainWindow::MainWindow()
     ui->setupUi(this);
     ui->tabs->hide();
     ui->mainWindowEmptyLbl->show();
-    auto ver = QApplication::applicationVersion();
-    ver.truncate(5);
-    ui->version->setText(QString("v. %1").arg(ver));
+    ui->version->setText(QString("v. %1").arg(QApplication::applicationVersion()));
     searchDevice();
 }
 

@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 #include <QString>
+#include <QVersionNumber>
 
 #pragma pack(push, 1)
 
@@ -11,7 +12,17 @@
  */
 struct SoftwareVersion
 {
-    SoftwareVersion() = default;
+    SoftwareVersion()
+        : build  (0)
+        , release(0)
+        , minor  (0)
+        , major  (1)
+    {}
+
+    SoftwareVersion(uint16_t data)
+    {
+        memcpy(this, &data, sizeof(uint16_t));
+    }
 
     SoftwareVersion(uint16_t major, uint16_t minor, uint16_t release, uint16_t build)
         : build(build), release(release), minor(minor), major(major)
@@ -30,12 +41,11 @@ struct SoftwareVersion
             && build   == rhs.build;
     }
     
-    bool operator <  (SoftwareVersion rhs) const
+    bool operator <  (SoftwareVersion r) const
     {
-        return major   < rhs.major
-            || minor   < rhs.minor
-            || release < rhs.release
-            || build   < rhs.build;
+        QVersionNumber lhs { major, minor, release, build };
+        QVersionNumber rhs { r.major, r.minor, r.release, r.build };
+        return lhs < rhs;
     }
     
     bool operator != (SoftwareVersion rhs) const
