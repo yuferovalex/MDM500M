@@ -20,7 +20,7 @@ public:
     void clear();
 
 private:
-    Command *nextCmd();
+    std::unique_ptr<Command> nextCmd();
     void loop();
 
     std::atomic_bool m_exit;

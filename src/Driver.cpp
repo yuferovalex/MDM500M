@@ -12,7 +12,7 @@ Driver::Driver()
 
 Driver::~Driver()
 {
-    m_exit.store(true, std::memory_order_relaxed);
+    m_exit.store(true, std::memory_order_release);
     m_cancellationSource.cancel();
     m_cv.notify_all();
     m_thread->wait();
@@ -37,23 +37,23 @@ void Driver::clear()
     }
 }
 
-Command *Driver::nextCmd()
+std::unique_ptr<Command> Driver::nextCmd()
 {
-    if (m_exit.load(std::memory_order_relaxed)) {
+    if (m_exit.load(std::memory_order_acquire)) {
         return nullptr;
     }
     std::unique_lock<std::mutex> lock(m_mutex);
     if (m_queue.empty()) {
         m_cv.wait(lock, [this] {
-            return m_exit.load(std::memory_order_relaxed) || !m_queue.empty();
+            return m_exit.load(std::memory_order_acquire) || !m_queue.empty();
         });
-        if (m_exit.load(std::memory_order_relaxed)) {
+        if (m_exit.load(std::memory_order_acquire)) {
             return nullptr;
         }
     }
     auto cmd = m_queue.front();
     m_queue.pop();
-    return cmd;
+    return std::unique_ptr<Command>(cmd);
 }
 
 void Driver::loop()
@@ -61,7 +61,6 @@ void Driver::loop()
     QSerialPort port;
     while (auto cmd = nextCmd()) {
         try {
-            m_cancellationSource = CancellationSource();
             cmd->exec(port, m_cancellationSource.token());
         }
         catch (CancelledException &) {
@@ -69,6 +68,5 @@ void Driver::loop()
         catch (...) {
             std::terminate();
         }
-        delete cmd;
     }
 }

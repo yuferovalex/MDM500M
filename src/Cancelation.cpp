@@ -11,7 +11,7 @@ CancelToken::operator bool() const
 
 bool CancelToken::isCancelled() const
 {
-    return m_isCanceled->load(std::memory_order_relaxed);
+    return m_isCanceled->load(std::memory_order_acquire);
 }
 
 void CancelToken::throwIfCanceled() const
@@ -28,7 +28,7 @@ CancelToken CancellationSource::token() const
 
 void CancellationSource::cancel()
 {
-    m_isCanceled->store(true, std::memory_order_relaxed);
+    m_isCanceled->store(true, std::memory_order_release);
 }
 
 CancelledException::CancelledException() noexcept
