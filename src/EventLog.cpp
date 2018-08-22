@@ -13,11 +13,11 @@ EventLog::EventLog(Device &device, QObject *parent)
 {
 }
 
-void EventLog::initialMessage(DeviceErrors log)
+void EventLog::initialMessage(MDM500M::DeviceErrors log)
 {
     open();
     out() << tr("Начало работы с устройством \"%1\"").arg(m_device.name()) << endl;
-    out() << tr("Серийный номер:  %1").arg(m_device.serialNumber().toString()) << endl;
+    out() << tr("Серийный номер:  %1").arg(m_device.serialNumber()) << endl;
     out() << tr("Версия прошивки: %1").arg(m_device.softwareVersion().toString()) << endl;
     if (log) {
         out() << tr("Со времени последнего подключения произошли следующие ошибки:") << endl;
@@ -39,7 +39,7 @@ void EventLog::subscribe()
     }
 }
 
-void EventLog::reportOldErrors(DeviceErrors log)
+void EventLog::reportOldErrors(MDM500M::DeviceErrors log)
 {
     for (int slot = 0; slot < m_device.moduleCount(); ++slot) {
         auto e = log[slot];
@@ -102,7 +102,7 @@ void EventLog::open()
 {
     if (!m_file->isOpen()) {
         m_file->setFileName(QString("%1_%2.log")
-                            .arg(m_device.serialNumber().toString())
+                            .arg(m_device.serialNumber())
                             .arg(QDate::currentDate().toString("dd.MM.yyyy")));
         if (!m_file->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append)) {
             return;

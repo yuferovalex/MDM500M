@@ -7,6 +7,8 @@
 
 #include "Frequency.h"
 
+namespace Interfaces {
+
 class ChannelTable
 {
 public:
@@ -16,9 +18,11 @@ public:
     virtual KiloHertz frequency(QString channel) const = 0;
 };
 
-class WrongChannelName : std::exception {};
+} // namespace Interfaces
 
-class NullChannelTable : public ChannelTable
+class WrongChannelName : public std::exception {};
+
+class NullChannelTable : public Interfaces::ChannelTable
 {
 public:
     static std::shared_ptr<NullChannelTable> globalInstance();
@@ -28,7 +32,7 @@ public:
     QStringList allChannels() const override;
 };
 
-class TvChannelTable : public ChannelTable
+class TvChannelTable : public Interfaces::ChannelTable
 {
 public:
     static std::shared_ptr<TvChannelTable> globalInstance();

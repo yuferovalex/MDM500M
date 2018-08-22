@@ -15,7 +15,7 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 VER_MAJ=3
 VER_MIN=1
-VER_PAT=1
+VER_PAT=2
 VERSION = $${VER_MAJ}.$${VER_MIN}.$${VER_PAT}
 DEFINES += VER_MAJ=$$VER_MAJ
 DEFINES += VER_MIN=$$VER_MIN
@@ -43,8 +43,6 @@ OTHER_FILES = app_resource.rc
 
 HEADERS += \
     Types.h \
-    Commands.h \
-    Driver.h \
     Cancelation.h \
     Protocol.h \
     Device.h \
@@ -57,16 +55,16 @@ HEADERS += \
     Frequency.h \
     ModuleViews.h \
     NameRepository.h \
-    XmlSerializer.h \
     EventLog.h \
     BootLoad.h \
     UpdaterProtocol.h \
-    Firmware.h
+    Firmware.h \
+    TransactionInvoker.h \
+    Transactions.h \
+    SettingsSerializers.h
 
 SOURCES += \
     main.cpp \
-    Commands.cpp \
-    Driver.cpp \
     Cancelation.cpp \
     Protocol.cpp \
     Device.cpp \
@@ -78,10 +76,12 @@ SOURCES += \
     ChannelTable.cpp \
     ModuleViews.cpp \
     NameRepository.cpp \
-    XmlSerializer.cpp \
     EventLog.cpp \
     UpdaterProtocol.cpp \
-    Firmware.cpp
+    Firmware.cpp \
+    TransactionInvoker.cpp \
+    Transactions.cpp \
+    SettingsSerializers.cpp
 
 FORMS += \
     MainWindow.ui \

@@ -9,7 +9,6 @@ class MiniView;
 }
 class Device;
 class Module;
-class SettingsView;
 class QButtonGroup;
 
 class MiniView : public QWidget
@@ -17,8 +16,10 @@ class MiniView : public QWidget
     Q_OBJECT
 
 public:
-    MiniView(SettingsView *settingsView);
-    ~MiniView();
+    MiniView(Device *device);
+
+signals:
+    void controlModuleChanged(int slot);
 
 private slots:
     void onCurrentButtonChanged(int id);
@@ -28,7 +29,6 @@ private slots:
 
 private:
     std::unique_ptr<Ui::MiniView> ui;
-    SettingsView *m_settingsView;
     QButtonGroup *m_group;
     Device *m_device;
 };

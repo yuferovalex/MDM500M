@@ -20,11 +20,11 @@ VS_VERSION_INFO VERSIONINFO
 			BLOCK "041904b0"
 			BEGIN
                 VALUE "CompanyName", "Planar"
-                VALUE "FileDescription", "Программа управления демодулятором МДМ-500М"
+                VALUE "FileDescription", "Программа управления демодуляторами МДМ-500 и МДМ-500М"
                 VALUE "FileVersion", VERSION_STR
                 VALUE "LegalCopyright", "(c) 2018 Planar"
                 VALUE "OriginalFilename", "MDM500M " VERSION_STR ".exe"
-                VALUE "ProductName", "Демодулятор МДМ-500М v." VERSION_STR
+                VALUE "ProductName", "Демодуляторы МДМ-500 и МДМ-500М v" VERSION_STR
                 VALUE "ProductVersion", VERSION_STR
 			END
 		END

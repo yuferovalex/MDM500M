@@ -1,7 +1,7 @@
 #include <QSerialPortInfo>
 #include <QThread>
 
-#include "Commands.h"
+#include "Transactions.h"
 #include "Protocol.h"
 #include "Firmware.h"
 #include "UpdaterProtocol.h"
@@ -15,6 +15,11 @@
         if (cancelled) return; \
     } while(false)
 
+SearchDevice::SearchDevice()
+{
+    qRegisterMetaType<SearchDevice::DeviceType>();
+}
+
 void SearchDevice::exec(QSerialPort &port, CancelToken cancelled)
 {
     while (!cancelled) {
@@ -22,13 +27,10 @@ void SearchDevice::exec(QSerialPort &port, CancelToken cancelled)
             if (cancelled) {
                 return ;
             }
-            if (!isFTDI(info)) {
-                continue;
-            }
             port.setPort(info);
             if (port.open(QIODevice::ReadWrite)) {
-                if (check(port)) {
-                    return emit found();
+                if (tryGetDeviceInfo(port)) {
+                    return ;
                 }
                 port.close();
             }
@@ -37,26 +39,26 @@ void SearchDevice::exec(QSerialPort &port, CancelToken cancelled)
     }
 }
 
-bool SearchDevice::isFTDI(const QSerialPortInfo &info) const
-{
-    // Default FTDI VID and PID
-    constexpr quint16 VID = 0x0403;
-    constexpr quint16 PID = 0x6001;
-
-    return info.vendorIdentifier() == VID && info.productIdentifier() == PID;
-}
-
-bool SearchDevice::check(QSerialPort &port)
+bool SearchDevice::tryGetDeviceInfo(QSerialPort &port)
 {
     Protocol proto(port);
-    DeviceInfo info;
+    if (!proto.configure()) {
+        return false;
+    }
+    MDM500M::DeviceInfo info;
     bool received = proto.get(Protocol::Command::ReadInfo, info);
-    return received && info.hardwareVersion == kMDM500MHardwareVersion;;
+    if (received && info.hardwareVersion == MDM500M::kHardwareVersion) {
+        emit found(DeviceType::MDM500M);
+        return true;
+    }
+    return false;
 }
+
+namespace MDM500M {
 
 GetAllDeviceInfo::GetAllDeviceInfo()
 {
-    qRegisterMetaType<GetAllDeviceInfo::Response>();
+    qRegisterMetaType<Interfaces::GetAllDeviceInfo::Response>();
 }
 
 void GetAllDeviceInfo::exec(QSerialPort &port, CancelToken cancelled)
@@ -82,7 +84,7 @@ void GetAllDeviceInfo::exec(QSerialPort &port, CancelToken cancelled)
 
 UpdateDeviceInfo::UpdateDeviceInfo()
 {
-    qRegisterMetaType<UpdateDeviceInfo::Response>();
+    qRegisterMetaType<Interfaces::UpdateDeviceInfo::Response>();
 }
 
 void UpdateDeviceInfo::exec(QSerialPort &port, CancelToken cancelled)
@@ -108,7 +110,7 @@ void UpdateDeviceInfo::exec(QSerialPort &port, CancelToken cancelled)
 SetControlModule::SetControlModule(int slot)
     : m_data(static_cast<uint8_t>(slot))
 {
-    Q_ASSERT(slot >= 0 && slot < kMDM500MSlotCount);
+    Q_ASSERT(slot >= 0 && slot < kSlotCount);
 }
 
 void SetControlModule::exec(QSerialPort &port, CancelToken cancelled)
@@ -125,7 +127,7 @@ void SetControlModule::exec(QSerialPort &port, CancelToken cancelled)
 SetModuleConfig::SetModuleConfig(int slot, ModuleConfig config)
     : m_data { static_cast<uint8_t>(slot), std::move(config) }
 {
-    Q_ASSERT(slot >= 0 && slot < kMDM500MSlotCount);
+    Q_ASSERT(slot >= 0 && slot < kSlotCount);
 }
 
 void SetModuleConfig::exec(QSerialPort &port, CancelToken cancelled)
@@ -183,7 +185,7 @@ void SaveConfigToEprom::exec(QSerialPort &port, CancelToken cancelled)
 UpdateFirmware::UpdateFirmware(Firmware firmware)
     : m_firmware(firmware)
 {
-    qRegisterMetaType<Status>();
+    qRegisterMetaType<Interfaces::UpdateFirmware::Status>();
 }
 
 void UpdateFirmware::exec(QSerialPort &port, CancelToken)
@@ -194,9 +196,13 @@ void UpdateFirmware::exec(QSerialPort &port, CancelToken)
     emit started();
 
     reboot(proto);
+
+    boot.configure();
     if (!flash(boot)) {
         return emit failure();
     }
+
+    proto.configure();
     waitForFirmware(proto);
     reboot(proto);
     waitForFirmware(proto);
@@ -252,3 +258,41 @@ void UpdateFirmware::reboot(Protocol &proto)
     Q_ASSERT(err == Protocol::Error::Ok);
     qDebug("UpdateFirmware::reboot(): устройство перезагружено");
 }
+
+GetAllDeviceInfo *TransactionFabric::getAllDeviceInfo()
+{
+    return new GetAllDeviceInfo();
+}
+
+UpdateDeviceInfo *TransactionFabric::updateDeviceInfo()
+{
+    return new UpdateDeviceInfo();
+}
+
+SetControlModule *TransactionFabric::setControlModule(int slot)
+{
+    return new SetControlModule(slot);
+}
+
+SetModuleConfig *TransactionFabric::setModuleConfig(int slot, ModuleConfig config)
+{
+    return new SetModuleConfig(slot, config);
+}
+
+SetThresholdLevels *TransactionFabric::setThresholdLevels(const SignalLevels &lvls)
+{
+    return new SetThresholdLevels(lvls);
+}
+
+SaveConfigToEprom *TransactionFabric::saveConfigToEprom(const DeviceConfig &config)
+{
+    return new SaveConfigToEprom(config);
+}
+
+UpdateFirmware *TransactionFabric::updateFirmware(Firmware firmware)
+{
+    return new UpdateFirmware(firmware);
+}
+
+} // namespace MDM500M
+

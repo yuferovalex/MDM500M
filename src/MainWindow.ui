@@ -84,7 +84,7 @@
          </font>
         </property>
         <property name="text">
-         <string>Демодулятор МДМ-500М</string>
+         <string notr="true">Демодуляторы МДМ-500 и МДМ-500М</string>
         </property>
        </widget>
       </item>

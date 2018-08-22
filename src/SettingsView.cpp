@@ -4,38 +4,45 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QMessageBox>
-#include <QTimer>
 #include <QProgressDialog>
+#include <QTimer>
 
-#include "Firmware.h"
-#include "Commands.h"
 #include "ChannelTable.h"
-#include "Driver.h"
 #include "EventLog.h"
+#include "Firmware.h"
 #include "ModuleViews.h"
 #include "Modules.h"
 #include "NameRepository.h"
 #include "SettingsView.h"
+#include "Transactions.h"
+#include "TransactionInvoker.h"
+#include "SettingsSerializers.h"
 #include "ui_SettingsView.h"
-#include "XmlSerializer.h"
 
-SettingsView::SettingsView(std::unique_ptr<Driver> &&driver,
-                           std::shared_ptr<ModuleViewFabric> moduleViewFabric,
-                           std::shared_ptr<NameRepository> nameRepo)
-    : m_device(new ModuleFabricImpl())
-    , m_moduleViewFabric(moduleViewFabric)
-    , m_nameRepo(nameRepo)
+SettingsView::SettingsView(const SettingsViewBuilder &builder)
+    : m_device(builder.moduleFabric, builder.type)
+    , m_moduleViewFabric(builder.moduleViewFabric)
+    , m_transactionFabric(builder.transactionFabric)
+    , m_nameRepo(builder.nameRepo)
+    , m_invoker(builder.invoker)
+    , m_settingsSerializer(builder.settingsSerializer)
     , ui(std::make_unique<Ui::SettingsView>())
-    , m_driver(std::move(driver))
     , m_log(new EventLog(m_device, this))
+    , m_updateTimer(new QTimer(this))
 {
+    m_updateTimer->setInterval(800);
+    m_updateTimer->setSingleShot(true);
+    connect(m_updateTimer, &QTimer::timeout, this, &SettingsView::updateModel);
+
     // UI setup
     ui->setupUi(this);
     setInterfaceEnabled(false);
-    ui->configTable->setModel(new ConfigViewModel(m_device, ui->configTable));
+    auto model = new ConfigViewModel(m_device, ui->configTable);
+    ui->configTable->setModel(model);
     ui->configTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     ui->configTable->verticalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 
+    // Выравниваем высоту надписей в таблице "Общая информация"
     auto max = std::max({
         ui->deviceNameLabel->height(),
         ui->deviceSerialNumberLabel->height(),
@@ -45,11 +52,23 @@ SettingsView::SettingsView(std::unique_ptr<Driver> &&driver,
     ui->deviceSerialNumberLabel->setMinimumHeight(max);
     ui->deviceSoftwareVersionLabel->setMinimumHeight(max);
 
+    // Настраиваем вид в зависимости от типа устройства
+    bool show = builder.type == DeviceType::MDM500M;
+    model->showSignalLevelColumn(show);
+    ui->updateFirmwareBtn->setVisible(show);
+    ui->updateFirmwareBtn->setVisible(show);
+
     initModel();
+}
+
+QString SettingsView::type() const
+{
+    return m_device.type();
 }
 
 void SettingsView::mousePressEvent(QMouseEvent *event)
 {
+    // Очистка фокуса, если есть
     if (auto focused = focusWidget()) {
         focused->clearFocus();
     }
@@ -76,90 +95,100 @@ void SettingsView::setInterfaceEnabled(bool enabled)
 void SettingsView::updateMainInfo()
 {
     ui->name->setText(m_device.name());
-    ui->serialNumber->setText(m_device.serialNumber().toString());
+    ui->serialNumber->setText(m_device.serialNumber());
     ui->softwareVersion->setText(m_device.softwareVersion().toString());
 }
 
 void SettingsView::initModel()
 {
+    using Interfaces::GetAllDeviceInfo;
+
     qDebug("начата инициализация модели");
-    auto cmd = new GetAllDeviceInfo;
-    connect(cmd, &GetAllDeviceInfo::success, this, [=](auto &&response)
+    auto transaction = m_transactionFabric->getAllDeviceInfo();
+    connect(transaction, &GetAllDeviceInfo::success, this, [=](auto &&response)
     {
         qDebug("инициализация модели завершена");
 
-        // Fill model
+        // Заполняем модель данными
         m_device.setInfo(response.info);
-        m_device.setName(m_nameRepo->getName(m_device.serialNumber().toString()));
+        m_device.setName(m_nameRepo->getName("МДМ-500М", m_device.serialNumber()));
         m_device.setConfig(response.config);
         m_device.setThresholdLevels(response.thresholdLevels);
         m_device.setSignalLevels(response.signalLevels);
 
-        // Update GUI
+        // Обновляем интерфейс пользователя
         m_log->initialMessage(response.log);
         setInterfaceEnabled(true);
         updateMainInfo();
-        // Start update loop
-        QTimer::singleShot(800, this, &SettingsView::updateModel);
+
+        // Запускаем цикл обновления данных
+        m_updateTimer->start();
     });
-    connect(cmd, &GetAllDeviceInfo::failure, this, [=]
+    connect(transaction, &GetAllDeviceInfo::failure, this, [=]
     {
         qDebug("произошло отключение во время инициализации модели");
+
         emit disconnected();
     });
-    m_driver->exec(cmd);
+    m_invoker->exec(transaction);
 }
 
 void SettingsView::updateModel()
 {
-    if (m_breakUpdateLoop) {
-        m_breakUpdateLoop = false;
-        return ;
-    }
+    using Interfaces::UpdateDeviceInfo;
+
     qDebug("начато обновление модели");
-    auto cmd = new UpdateDeviceInfo;
-    connect(cmd, &UpdateDeviceInfo::success, this, [=](auto &&response)
+    auto transaction = m_transactionFabric->updateDeviceInfo();
+    connect(transaction, &UpdateDeviceInfo::success, this, [=](auto &&response)
     {
         qDebug("обновление завершено");
+        // Обновляем модель
         m_device.setErrors(response.errors);
         m_device.setSignalLevels(response.signalLevels);
         m_device.setModuleStates(response.states);
-        QTimer::singleShot(800, this, &SettingsView::updateModel);
+
+        // Запускаем таймер по новой
+        m_updateTimer->start();
     });
-    connect(cmd, &UpdateDeviceInfo::failure, this, [=]
+    connect(transaction, &UpdateDeviceInfo::failure, this, [=]
     {
         qDebug("произошло отключение во время обновления модели");
         emit disconnected();
     });
-    m_driver->exec(cmd);
+    m_invoker->exec(transaction);
 }
 
-void SettingsView::update(const Firmware &firmware)
+void SettingsView::updateFirmware(const Firmware &firmware)
 {
-    auto cmd = new UpdateFirmware(firmware);
-    auto dialog = new QProgressDialog(this, Qt::Window | Qt::WindowTitleHint);
+    using Interfaces::UpdateFirmware;
 
+    auto transaction = m_transactionFabric->updateFirmware(firmware);
+    auto dialog = new QProgressDialog(
+                this,
+                Qt::Window | Qt::WindowTitleHint); // Убераем кноки из заголовка
+
+    // Настраиваем диалог
     dialog->setMinimum(0);
-    dialog->setCancelButton(nullptr);
+    dialog->setCancelButton(nullptr); // Запрещаем отмену
     dialog->setModal(true);
     dialog->setAutoClose(false);
     dialog->setAutoReset(false);
     dialog->setWindowTitle(tr("Прошивка"));
 
-    connect(cmd, &UpdateFirmware::started, dialog, &QProgressDialog::show);
-    connect(cmd, &UpdateFirmware::success, this, [=]
+    connect(transaction, &UpdateFirmware::started, dialog, &QProgressDialog::show);
+    connect(transaction, &UpdateFirmware::success, this, [=]
     {
         dialog->deleteLater();
         QMessageBox::information(this, QString(), tr("Устройство успешно перепрошито"));
         initModel();
     });
-    connect(cmd, &UpdateFirmware::failure, this, [=]
+    connect(transaction, &UpdateFirmware::failure, this, [=]
     {
         dialog->deleteLater();
         QMessageBox::critical(this, QString(), tr("Во время перепрошивки произошла ошибка"));
         initModel();
     });
-    connect(cmd, &UpdateFirmware::statusChanged, dialog, [=](auto status)
+    connect(transaction, &UpdateFirmware::statusChanged, dialog, [=](auto status)
     {
         QString text;
         switch (status) {
@@ -178,117 +207,141 @@ void SettingsView::update(const Firmware &firmware)
         }
         dialog->setLabelText(text);
     });
-    connect(cmd, &UpdateFirmware::progressChanged, dialog, &QProgressDialog::setValue);
-    connect(cmd, &UpdateFirmware::progressMaxChanged, dialog, &QProgressDialog::setMaximum);
+    connect(transaction, &UpdateFirmware::progressChanged, dialog, &QProgressDialog::setValue);
+    connect(transaction, &UpdateFirmware::progressMaxChanged, dialog, &QProgressDialog::setMaximum);
 
-    m_breakUpdateLoop = true;
-    m_driver->exec(cmd);
+    // Останавливаем цикл обновлений модели
+    if (m_updateTimer->isActive()) {
+        m_updateTimer->stop();
+    }
+    m_invoker->exec(transaction);
 }
 
 void SettingsView::setControlModule(int slot)
 {
+    using Interfaces::SetControlModule;
+
     qDebug("запрошено переключение контрольного канала");
-    auto cmd = new SetControlModule(slot);
+    auto transaction = m_transactionFabric->setControlModule(slot);
     m_device.setControlModule(slot);
-    connect(cmd, &SetControlModule::success, this, [=]
+    connect(transaction, &SetControlModule::success, this, [=]
     {
         qDebug("контрольный канал переключён");
     });
-    connect(cmd, &SetControlModule::failure, this, [=]
+    connect(transaction, &SetControlModule::failure, this, [=]
     {
         qDebug("произошло отключение во время переключения контрольного канала");
         emit disconnected();
     });
-    m_driver->exec(cmd);
+    m_invoker->exec(transaction);
 }
 
 void SettingsView::setModuleConfig(int slot)
 {
+    using Interfaces::SetModuleConfig;
+
     qDebug("запрошено сохранение новых настроек модуля");
     auto config = m_device.data().config.modules[slot];
-    auto cmd = new SetModuleConfig(slot, config);
-    connect(cmd, &SetModuleConfig::success, this, [=]
+    auto transaction = m_transactionFabric->setModuleConfig(slot, config);
+    connect(transaction, &SetModuleConfig::success, this, [=]
     {
         qDebug("параметры модуля применены");
     });
-    connect(cmd, &SetModuleConfig::wrongParametersDetected, this, []
+    connect(transaction, &SetModuleConfig::wrongParametersDetected, this, []
     {
         qDebug("устройство сообщило о неверных значениях параметров (1)");
         // TODO: ShowMessage("blah-blah-blah");
     });
-    connect(cmd, &SetModuleConfig::failure, this, [=]
+    connect(transaction, &SetModuleConfig::failure, this, [=]
     {
         qDebug("произошло отключение во время применения параметров модуля");
         emit disconnected();
     });
-    m_driver->exec(cmd);
+    m_invoker->exec(transaction);
 }
 
 void SettingsView::setThresholdLevels()
 {
+    using Interfaces::SetThresholdLevels;
+
     qDebug("запрошено сохранение пороговых уровней");
     auto lvls = m_device.data().thresholdLevels;
-    auto cmd = new SetThresholdLevels(lvls);
-    connect(cmd, &SetThresholdLevels::success, this, [=]
+    auto transaction = m_transactionFabric->setThresholdLevels(lvls);
+    connect(transaction, &SetThresholdLevels::success, this, [=]
     {
         qDebug("пороговые уровни установлены");
     });
-    connect(cmd, &SetThresholdLevels::failure, this, [=]
+    connect(transaction, &SetThresholdLevels::failure, this, [=]
     {
         qDebug("произошло отключение во время применения пороговых уровней");
         emit disconnected();
     });
-    m_driver->exec(cmd);
+    m_invoker->exec(transaction);
 }
 
 void SettingsView::on_saveChangesBtn_clicked()
 {
+    using Interfaces::SaveConfigToEprom;
+
     qDebug("запрошено сохранение параметров в постоянную память");
     ui->saveChangesBtn->setEnabled(false);
-    auto cmd = new SaveConfigToEprom(m_device.data().config);
-    connect(cmd, &SaveConfigToEprom::success, this, [=]
+    auto transaction = m_transactionFabric->saveConfigToEprom(m_device.data().config);
+    connect(transaction, &SaveConfigToEprom::success, this, [=]
     {
         qDebug("параметры сохранены в постоянную память");
         ui->saveChangesBtn->setEnabled(true);
     });
-    connect(cmd, &SaveConfigToEprom::wrongParametersDetected, this, [=]
+    connect(transaction, &SaveConfigToEprom::wrongParametersDetected, this, [=]
     {
         qDebug("устройство сообщило о неверных значениях параметров (2)");
         // TODO: ShowMessage(blah-blah-blah);
         ui->saveChangesBtn->setEnabled(true);
     });
-    connect(cmd, &SaveConfigToEprom::deviceCorruptionDetected, this, [=]
+    connect(transaction, &SaveConfigToEprom::deviceCorruptionDetected, this, [=]
     {
         qDebug("устройство сообщило о повреждении памяти");
         // TODO: ShowMessage(blah-blah-blah);
         ui->saveChangesBtn->setEnabled(true);
     });
-    connect(cmd, &SaveConfigToEprom::failure, this, [=]
+    connect(transaction, &SaveConfigToEprom::failure, this, [=]
     {
         qDebug("произошло отключение во время сохранения параметров в постоянную память");
         emit disconnected();
     });
-    m_driver->exec(cmd);
+    m_invoker->exec(transaction);
 }
 
 void SettingsView::on_updateFirmwareBtn_clicked()
 {
-    auto filename = QFileDialog::getOpenFileName(this, QString(), QString(), "BSK (*.bsk)");
-    if (filename.isEmpty()) return;
+    // Начинаем диалог с пользователем
+    auto filename = QFileDialog::getOpenFileName(
+                this,
+                tr("Выберите файл прошивки"),
+                QDir::currentPath(),
+                "BSK (*.bsk)");
+    // Если нажал "Отмена" - выходим
+    if (filename.isEmpty()) {
+        return;
+    }
     Firmware firmware(filename);
+    // Проверяем файл на ошибки
     if (firmware.isError()) {
-        QMessageBox::warning(this,
-                             QString(),
-                             tr("Произошла ошибка при открытии файла прошивки: %1")
-                             .arg(firmware.errorString()));
+        QMessageBox::warning(
+                    this,
+                    tr("Ошибка"),
+                    tr("Произошла ошибка при открытии файла прошивки: %1")
+                    .arg(firmware.errorString()));
         return ;
     }
-    if (!firmware.isCompatible(kMDM500MHardwareVersion)) {
-        QMessageBox::warning(this,
-                             QString(),
-                             tr("Прошивка в данном файле не предназначена для этого устройства."));
+    // Проверяем прошивку на совместимость
+    if (!firmware.isCompatible(MDM500M::kHardwareVersion)) {
+        QMessageBox::warning(
+                    this,
+                    tr("Ошибка"),
+                    tr("Прошивка в данном файле не предназначена для этого устройства."));
         return ;
     }
+    // Если откат, то просим подтверждения
     if (firmware.softwareVersion() < m_device.softwareVersion()) {
         int answer = QMessageBox::question
         (
@@ -301,6 +354,7 @@ void SettingsView::on_updateFirmwareBtn_clicked()
         );
         if (answer != QMessageBox::Yes) { return ; }
     }
+    // Если перепрошивка, то просим подтверждения
     if (firmware.softwareVersion() == m_device.softwareVersion()) {
         int answer = QMessageBox::question
         (
@@ -313,45 +367,77 @@ void SettingsView::on_updateFirmwareBtn_clicked()
         );
         if (answer != QMessageBox::Yes) { return ; }
     }
-
-    update(firmware);
+    // Начинаем процедуру перепрошивки
+    updateFirmware(firmware);
 }
 
 void SettingsView::on_createBackupBtn_clicked()
 {
-    auto filename = QFileDialog::getSaveFileName(this, QString(), QString(), "XML (*.xml)");
-    if (filename.isEmpty()) return;
+    // Начинаем диалог с пользователем
+    auto filename = QFileDialog::getSaveFileName(
+                this,
+                tr("Выберите место для сохранения настроек"),
+                QDir::currentPath(),
+                m_settingsSerializer->fileExtension());
+    // Если нажал "Отмена" - выходим
+    if (filename.isEmpty()) {
+        return;
+    }
+    // Открываем файл для записи, если не удалось, то выдаем предупреждение
     QFile file(filename);
     if (!file.open(QIODevice::WriteOnly)) {
-        QMessageBox::warning(this, QString(), tr("Не удалось открыть файл для записи: %1")
-                             .arg(file.errorString()));
+        QMessageBox::warning(
+                    this,
+                    tr("Ошибка"),
+                    tr("Не удалось открыть файл для записи: %1")
+                    .arg(file.errorString()));
         return ;
     }
-
-    XmlSerializer serializer;
-    serializer.serialize(file, m_device);
+    // Сохраняем настройки
+    m_settingsSerializer->serialize(file, m_device);
     QMessageBox::information(this, QString(), tr("Настройки успешно сохранены"));
 }
 
 void SettingsView::on_restoreBackupBtn_clicked()
 {
-    auto filename = QFileDialog::getOpenFileName(this, QString(), QString(), "XML (*.xml)");
-    if (filename.isEmpty()) return;
-    QFile file(filename);
-    if (!file.open(QIODevice::ReadOnly)) {
-        QMessageBox::warning(this, QString(), tr("Не удалось открыть файл для чтения: %1")
-                             .arg(file.errorString()));
-        return ;
-    }
-
-    XmlSerializer serializer;
-    QString errors;
-    if (!serializer.deserialize(file, m_device, errors)) {
-        QMessageBox::warning(this, QString(), errors);
+    // Начинаем диалог с пользователем
+    auto filename = QFileDialog::getOpenFileName(
+                this,
+                tr("Выберите файл настроек для восстановления"),
+                QDir::currentPath(),
+                m_settingsSerializer->fileExtension());
+    // Если нажал "Отмена" - выходим
+    if (filename.isEmpty()) {
         return;
     }
+    // Открываем файл для чтения, если не удалось, то выдаем предупреждение
+    QFile file(filename);
+    if (!file.open(QIODevice::ReadOnly)) {
+        QMessageBox::warning(
+                    this,
+                    tr("Ошибка"),
+                    tr("Не удалось открыть файл для чтения: %1")
+                    .arg(file.errorString()));
+        return ;
+    }
+    // Читаем настройки
+    QString errors;
+    bool restored = m_settingsSerializer->deserialize(file, m_device, errors);
+    // Если прочитать не удалось - выдаем предупреждение и выходим
+    if (!restored) {
+        QMessageBox::warning(
+                    this,
+                    tr("Ошибка"),
+                    tr("Во время чтения файла настроек произошла ошибка: %1")
+                    .arg(errors));
+        return ;
+    }
+    // Сохраняем восстановленные настройки на прибор и выдаем отчет
     on_saveChangesBtn_clicked();
-    QMessageBox::information(this, QString(), errors);
+    QMessageBox::information(
+                this,
+                tr("Отчет о восстановлении"),
+                errors);
 }
 
 void SettingsView::on_configTable_clicked(const QModelIndex &index)
@@ -384,24 +470,29 @@ void SettingsView::on_name_editingFinished()
 {
     auto name = ui->name->text();
     m_device.setName(name);
-    m_nameRepo->setName(m_device.serialNumber().toString(), name);
+    m_nameRepo->setName("МДМ-500М", m_device.serialNumber(), name);
 }
 
 ConfigViewModel::ConfigViewModel(Device &device, QObject *parent)
     : QAbstractTableModel(parent)
     , m_device(device)
 {
-    connect(&m_device, &Device::moduleReplaced, this, &ConfigViewModel::onModuleReplaced);
+    connect(&m_device, &Device::moduleReplaced,
+            this, &ConfigViewModel::onModuleReplaced);
 }
 
 int ConfigViewModel::rowCount(const QModelIndex &parent) const
 {
-    return parent.isValid() ? 0 : kMDM500MSlotCount;
+    return parent.isValid() ? 0 : MDM500M::kSlotCount;
 }
 
 int ConfigViewModel::columnCount(const QModelIndex &parent) const
 {
-    return parent.isValid() ? 0 : ColumnsCount;
+    return parent.isValid()
+            ? 0
+            : m_showSignalLevelColumn
+              ? ColumnsCount
+              : ColumnsCount - 1;
 }
 
 QVariant ConfigViewModel::data(const QModelIndex &index, int role) const
@@ -455,8 +546,9 @@ QVariant ConfigViewModel::data(const QModelIndex &index, int role) const
         case Qt::DisplayRole:
             return index.column() == ScaleLevel
                  ? module.scaleLevel().toString()
-                 : module.isSupportSignalLevel() ? QString::number(module.signalLevel())
-                                                 : QString("-");
+                 : module.isSupportSignalLevel()
+                   ? QString::number(module.signalLevel())
+                   : QString("-");
         case Qt::ForegroundRole:
             return QBrush("#3A6AB4");
         case Qt::FontRole: {
@@ -503,6 +595,23 @@ QVariant ConfigViewModel::headerData(int section, Qt::Orientation orientation, i
     return QVariant();
 }
 
+void ConfigViewModel::showSignalLevelColumn(bool show)
+{
+    if (show) {
+        beginInsertColumns(QModelIndex(), SignalLevel, SignalLevel);
+    }
+    else {
+        beginRemoveColumns(QModelIndex(), SignalLevel, SignalLevel);
+    }
+    m_showSignalLevelColumn = show;
+    if (show) {
+        endInsertColumns();
+    }
+    else {
+        endRemoveColumns();
+    }
+}
+
 void ConfigViewModel::onModuleReplaced(Module *module)
 {
     int slot = module->slot();
@@ -536,6 +645,13 @@ void ConfigViewModel::onModuleReplaced(Module *module)
                          << Qt::BackgroundRole);
     });
 
-    emit dataChanged(index(slot, 0), index(slot, ColumnsCount), QVector<int>() << Qt::DisplayRole << Qt::ToolTipRole);
-    emit dataChanged(index(slot, Status), index(slot, Status), QVector<int>() << Qt::BackgroundRole);
+    emit dataChanged(index(slot, 0), index(slot, ColumnsCount),
+                     QVector<int>() << Qt::DisplayRole << Qt::ToolTipRole);
+    emit dataChanged(index(slot, Status), index(slot, Status),
+                     QVector<int>() << Qt::BackgroundRole);
+}
+
+SettingsView *SettingsViewBuilder::build() const
+{
+    return new SettingsView(*this);
 }

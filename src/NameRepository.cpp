@@ -2,87 +2,131 @@
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
 #include <QHash>
+#include <QTimer>
 
 #include "NameRepository.h"
 
 NameRepository::NameRepository(QIODevice *device)
-    : m_device(device)
+    : m_timer(new QTimer(this))
+    , m_device(device)
 {
-    read();
+    Q_ASSERT(m_device != nullptr);
+
+    m_device->setParent(this);
+    m_timer->setInterval(m_saveTimeout);
+    m_timer->setSingleShot(true);
+    connect(m_timer, &QTimer::timeout, this, &NameRepository::saveChanges);
+    m_readFuture = std::async(&NameRepository::read, device);
 }
 
 NameRepository::~NameRepository()
 {
-    save();
-}
-
-QString NameRepository::getName(QString serialNumber)
-{
-    auto i = m_dictionary.find(serialNumber);
-    if (i == m_dictionary.end()) {
-        auto defaultName = QObject::tr("Новое устройство #%1").arg(m_index++);
-        m_dictionary[serialNumber] = defaultName;
-        m_hasChanges = true;
-        return defaultName;
+    if (m_timer->isActive()) {
+        m_timer->stop();
     }
-    return *i;
+    if (m_hasChanges) {
+        save(m_device, m_dictionary);
+    }
 }
 
-void NameRepository::setName(QString serialNumber, QString name)
+QString NameRepository::getName(QString type, QString serialNumber)
 {
-    auto i = m_dictionary.find(serialNumber);
-    if (i != m_dictionary.end() && *i == name) {
+    initDictionary();
+    auto i = m_dictionary.find(type);
+    if (i == m_dictionary.end()) {
+        return getDefaultName(type, serialNumber);
+    }
+    auto j = i->find(serialNumber);
+    return j == i->end()
+            ? getDefaultName(type, serialNumber)
+            : *j;
+}
+
+void NameRepository::setName(QString type, QString serialNumber, QString newName)
+{
+    initDictionary();
+    auto &currentName = m_dictionary[type][serialNumber];
+    if (currentName == newName) {
         return ;
     }
-    m_dictionary[serialNumber] = name;
+    currentName = newName;
     m_hasChanges = true;
+    m_timer->start();
 }
 
-void NameRepository::read()
+NameRepository::Dictionary NameRepository::read(QIODevice *m_device)
 {
     if (m_device == nullptr || !m_device->open(QIODevice::ReadOnly)) {
-        return ;
+        return Dictionary {};
     }
-    QXmlStreamReader xml(m_device.get());
+    QXmlStreamReader xml(m_device);
+    Dictionary m_dictionary;
     while (!xml.atEnd()) {
         auto token = xml.readNext();
         if (token == QXmlStreamReader::StartElement) {
             if (xml.name() == "device") {
                 auto attributes = xml.attributes();
                 auto serialNumber = attributes.value("serial").toString();
+                auto type = attributes.value("type").toString();
                 auto name = xml.readElementText();
-                if (!serialNumber.isEmpty() && !name.isEmpty()) {
-                    m_dictionary[serialNumber] = name;
+                if (!type.isEmpty() && !serialNumber.isEmpty() && !name.isEmpty()) {
+                    m_dictionary[type][serialNumber] = name;
                 }
             }
         }
     }
     m_device->close();
+    return m_dictionary;
 }
 
-void NameRepository::save()
+void NameRepository::save(QIODevice *m_device, const Dictionary &dictionary)
 {
-    if (m_device == nullptr || !m_hasChanges || !m_device->open(QIODevice::WriteOnly)) {
+    if (m_device == nullptr || !m_device->open(QIODevice::WriteOnly)) {
         return ;
     }
-    m_hasChanges = false;
 
-    QXmlStreamWriter xml(m_device.get());
+    QXmlStreamWriter xml(m_device);
     xml.setAutoFormatting(true);
     xml.writeStartDocument();
     xml.writeStartElement("devices");
 
-    for (auto i = m_dictionary.begin(); i != m_dictionary.end(); ++i) {
-        auto serial = i.key();
-        auto name = i.value();
+    for (auto i = dictionary.begin(); i != dictionary.end(); ++i) {
+        auto type = i.key();
 
-        xml.writeStartElement("device");
-        xml.writeAttribute("serial", serial);
-        xml.writeAttribute("type", "МДМ-500М"); // Обратная совместимость с версией 3.0
-        xml.writeCharacters(name);
-        xml.writeEndElement();
+        for (auto j = i->begin(); j != i->end(); ++j) {
+            auto serial = j.key();
+            auto name = j.value();
+
+            xml.writeStartElement("device");
+            xml.writeAttribute("type", type);
+            xml.writeAttribute("serial", serial);
+            xml.writeCharacters(name);
+            xml.writeEndElement();
+        }
     }
 
     xml.writeEndElement();
     m_device->close();
+}
+
+QString NameRepository::getDefaultName(QString type, QString serialNumber)
+{
+    auto defaultName = QObject::tr("Новое устройство #%1").arg(m_index++);
+    m_dictionary[type][serialNumber] = defaultName;
+    m_hasChanges = true;
+    return defaultName;
+}
+
+void NameRepository::initDictionary()
+{
+    if (!m_isDictionaryInit) {
+        m_dictionary = m_readFuture.get();
+        m_isDictionaryInit = true;
+    }
+}
+
+void NameRepository::saveChanges()
+{
+    m_saveFuture = std::async(&NameRepository::save, m_device, m_dictionary);
+    m_hasChanges = false;
 }

@@ -1,14 +1,16 @@
 #include <QFile>
 
-#include "Commands.h"
 #include "Device.h"
-#include "Driver.h"
+#include "Modules.h"
 #include "MainWindow.h"
 #include "MiniView.h"
-#include "SettingsView.h"
+#include "SettingsSerializers.h"
 #include "ModuleViews.h"
-#include "ui_MainWindow.h"
 #include "NameRepository.h"
+#include "SettingsView.h"
+#include "Transactions.h"
+#include "TransactionInvoker.h"
+#include "ui_MainWindow.h"
 
 MainWindow::MainWindow()
     : ui(std::make_unique<Ui::MainWindow>())
@@ -16,7 +18,10 @@ MainWindow::MainWindow()
     ui->setupUi(this);
     ui->tabs->hide();
     ui->mainWindowEmptyLbl->show();
-    ui->version->setText(QString("v. %1").arg(QApplication::applicationVersion()));
+    ui->version->setText(QString("v%1").arg(QApplication::applicationVersion()));
+    onCurrentTabChanged(-1);
+    connect(ui->tabs, &QTabWidget::currentChanged, this, &MainWindow::onCurrentTabChanged);
+    createBuilders();
     searchDevice();
 }
 
@@ -25,34 +30,54 @@ MainWindow::~MainWindow()
     clearTabs();
 }
 
+void MainWindow::createBuilders()
+{
+    SettingsViewBuilder builder;
+
+    builder.moduleFabric = std::make_shared<ModuleFabric>();
+    builder.moduleViewFabric = std::make_shared<ModuleViewFabric>();
+    builder.nameRepo = std::make_shared<NameRepository>(new QFile("devices.xml"));
+    builder.settingsSerializer = std::make_shared<XmlSerializer>();
+    builder.transactionFabric = std::make_shared<MDM500M::TransactionFabric>();
+    builder.type = DeviceType::MDM500M;
+
+    m_builders[DeviceType::MDM500M] = std::move(builder);
+}
+
 void MainWindow::searchDevice()
 {
-    m_driver = std::make_unique<Driver>();
-    auto cmd = new SearchDevice;
-    connect(cmd, &SearchDevice::found, this, [=]
+    m_invoker = std::make_unique<TransactionInvoker>();
+    auto transaction = new SearchDevice;
+    connect(transaction, &SearchDevice::found, this, [=](auto type)
     {
-        static auto moduleViewFabric = std::make_shared<ModuleViewFabricImpl>();
-        static auto nameRepo = std::make_shared<NameRepository>(new QFile("devices.xml"));
+        // Строитель такого типа зарегистрирован
+        Q_ASSERT(m_builders.find(type) != m_builders.end());
 
         // Создание новой вкладки
-        auto settingsView = new SettingsView(std::move(m_driver), moduleViewFabric, nameRepo);
-        auto miniView = new MiniView(settingsView);
+        auto &&builder = m_builders[type];
+        builder.invoker = std::move(m_invoker);
+        auto settingsView = builder.build();
+        auto miniView = new MiniView(settingsView->device());
+        connect(miniView, &MiniView::controlModuleChanged,
+                settingsView, &SettingsView::setControlModule);
         addTab(miniView, settingsView);
 
         // При отключении устройства удалить вкладку
         connect(settingsView, &SettingsView::disconnected, this, [=]
         {
+            // Если приостанавливали поиск, потому что достигли ограничения, то
+            // возобновляем его
             if (ui->tabs->count() == maxDeviceCount) {
                 searchDevice();
             }
             removeTab(settingsView);
         });
-
+        // Если вкладок меньше максимального значения, то продолжаем поиск
         if (ui->tabs->count() < maxDeviceCount) {
             searchDevice();
         }
     });
-    m_driver->exec(cmd);
+    m_invoker->exec(transaction);
 }
 
 void MainWindow::addTab(QWidget *miniView, QWidget *settingsView)
@@ -68,10 +93,20 @@ void MainWindow::removeTab(QWidget *settingsView)
     int index = ui->tabs->indexOf(settingsView);
     auto miniView = ui->tabs->tabBar()->tabButton(index, QTabBar::ButtonPosition::LeftSide);
     ui->tabs->removeTab(index);
-    delete miniView;
-    delete settingsView;
+    miniView->deleteLater();
+    settingsView->deleteLater();
     ui->tabs->setVisible(ui->tabs->count() > 0);
     ui->mainWindowEmptyLbl->setVisible(ui->tabs->count() == 0);
+}
+
+void MainWindow::onCurrentTabChanged(int index)
+{
+    if (index == -1) {
+        ui->title->setText(tr("Демодуляторы МДМ-500 и МДМ-500М"));
+        return ;
+    }
+    QString type = ui->tabs->widget(index)->property("type").toString();
+    ui->title->setText(tr("Демодулятор %1").arg(type));
 }
 
 void MainWindow::clearTabs()
@@ -80,8 +115,8 @@ void MainWindow::clearTabs()
         auto miniView = ui->tabs->tabBar()->tabButton(0, QTabBar::ButtonPosition::LeftSide);
         auto settingsView = ui->tabs->widget(0);
         ui->tabs->removeTab(0);
-        delete miniView;
-        delete settingsView;
+        miniView->deleteLater();
+        settingsView->deleteLater();
     }
     ui->tabs->hide();
     ui->mainWindowEmptyLbl->show();

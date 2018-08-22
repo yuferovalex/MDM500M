@@ -9,24 +9,27 @@
 
 #include "Cancelation.h"
 
-class Command;
+namespace Interfaces {
+class Transaction;
+} // namespace Interfaces
 
-class Driver
+class TransactionInvoker
 {
 public:
-    Driver();
-    ~Driver();
-    void exec(Command *cmd);
+
+    TransactionInvoker();
+    ~TransactionInvoker();
+    void exec(Interfaces::Transaction *transaction);
     void clear();
 
 private:
-    std::unique_ptr<Command> nextCmd();
+    std::unique_ptr<Interfaces::Transaction> nextTransaction();
     void loop();
 
     std::atomic_bool m_exit;
     std::mutex m_mutex;
     std::condition_variable m_cv;
-    std::queue<Command *> m_queue;
+    std::queue<Interfaces::Transaction *> m_queue;
     CancellationSource m_cancellationSource;
     QThread *m_thread;
 };

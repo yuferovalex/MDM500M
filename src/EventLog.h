@@ -15,7 +15,7 @@ class EventLog : public QObject
 
 public:
     EventLog(Device &device, QObject *parent = nullptr);
-    void initialMessage(DeviceErrors log);
+    void initialMessage(MDM500M::DeviceErrors log);
 
 private slots:
     void onModuleErrorsChanged();
@@ -26,7 +26,7 @@ private:
 
     void open();
     void subscribe();
-    void reportOldErrors(DeviceErrors log);
+    void reportOldErrors(MDM500M::DeviceErrors log);
     void reportCurrentErrors();
 
     QTextStream m_out;

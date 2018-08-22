@@ -1,112 +1,78 @@
-#include <QDeadlineTimer>
-
 #include "Protocol.h"
 
 Protocol::Protocol(QSerialPort &port)
     : m_port(port)
-{
-}
-
-bool Protocol::get(Protocol::Command cmd, void *data, size_t size, std::chrono::milliseconds timeout)
-{
-    if (!configure()) return false;
-    for (int attempt = 0; attempt < attemptsMaxCount; ++attempt) {
-        if (write(cmd, nullptr, 0) && read(cmd, data, size, timeout)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-bool Protocol::set(Protocol::Command cmd, Protocol::Error &error, const void *data, size_t size, std::chrono::milliseconds timeout)
-{
-    if (!configure()) return false;
-    for (int attempt = 0; attempt < attemptsMaxCount; ++attempt) {
-        if (write(cmd, data, size) && read(cmd, &error, sizeof(Error), timeout)) {
-            return true;
-        }
-    }
-    return false;
-}
+{}
 
 bool Protocol::configure()
 {
     return m_port.setBaudRate(QSerialPort::Baud19200)
-            && m_port.setDataBits(QSerialPort::Data8)
-            && m_port.setFlowControl(QSerialPort::NoFlowControl)
-            && m_port.setParity(QSerialPort::NoParity)
-            && m_port.setRequestToSend(true)
-            && m_port.setDataTerminalReady(true);
+        && m_port.setDataBits(QSerialPort::Data8)
+        && m_port.setFlowControl(QSerialPort::NoFlowControl)
+        && m_port.setParity(QSerialPort::NoParity)
+        && m_port.setRequestToSend(true)
+        && m_port.setDataTerminalReady(true);
 }
 
-uint8_t Protocol::getch()
+uint8_t Protocol::calcCrc(Protocol::Command cmd, const void *data, int size)
 {
-    uint8_t retval;
-    m_port.getChar(reinterpret_cast<char *>(&retval));
-    return retval;
-}
-
-void Protocol::putch(uint8_t ch)
-{
-    m_port.putChar(static_cast<char>(ch));
-}
-
-uint8_t Protocol::calcCrc(Protocol::Command cmd, const void *data, size_t size)
-{
-    uint8_t sizeField = minSize + static_cast<uint8_t>(size);
+    uint8_t sizeField = kMinValueOfSizeField + static_cast<uint8_t>(size);
     uint8_t headerCrc = sizeField + static_cast<uint8_t>(cmd);
     auto dataBegin = reinterpret_cast<const uint8_t *>(data);
     auto dataEnd   = dataBegin + size;
     return std::accumulate(dataBegin, dataEnd, headerCrc);
 }
 
-bool Protocol::wait(size_t size, std::chrono::milliseconds timeout)
+bool Protocol::get(Command request, void *readBuffer, int readBufferSize, std::chrono::milliseconds timeout)
 {
-    QDeadlineTimer timer(timeout);
+    return performDefaultDialog(request, nullptr, 0, readBuffer, readBufferSize, timeout);
+}
 
-    while(!timer.hasExpired()) {
-        if ((size_t) m_port.bytesAvailable() >= size) {
+bool Protocol::set(Command cmd, Error &error, const void *cmdParams, int cmdParamsSize, std::chrono::milliseconds timeout)
+{
+    return performDefaultDialog(cmd, cmdParams, cmdParamsSize, &error, sizeof(error), timeout);
+}
+
+bool Protocol::write(Command cmd, const void *data, int size)
+{
+    m_port.putChar(static_cast<char>(kPackageMarker             ));
+    m_port.putChar(static_cast<char>(size + kMinValueOfSizeField));
+    m_port.putChar(static_cast<char>(cmd                        ));
+    m_port.write(reinterpret_cast<const char *>(data), size);
+    m_port.putChar(static_cast<char>(calcCrc(cmd, data, size)));
+    return m_port.waitForBytesWritten(kWriteTimeout.count());
+}
+
+bool Protocol::performDefaultDialog(Command cmd, const void *writeBuffer, int writeBufferSize, void *readBuffer, int readBufferSize, std::chrono::milliseconds timeout)
+{
+    for (int attempt = 0; attempt < kMaxAttemptsCount; ++attempt) {
+        if (!write(cmd, writeBuffer, writeBufferSize)) {
+            return false;
+        }
+        if (read(DefaultReader(cmd, readBuffer, readBufferSize), timeout)) {
             return true;
         }
-        m_port.waitForReadyRead(timer.remainingTime());
     }
     return false;
 }
 
-bool Protocol::read(Protocol::Command cmd, void *data, size_t size, std::chrono::milliseconds timeout)
-{
-    auto readPackage = [=]
-    {
-        // Header
-        bool res = getch() == marker
-                && getch() == size + minSize
-                && getch() == (uint8_t) cmd;
-        // Body
-        if (res) {
-            m_port.read(reinterpret_cast<char *>(data), (qint64) size);
-            uint8_t expectedCrc = getch();
-            uint8_t actualCrc = calcCrc(cmd, data, size);
-            res = expectedCrc == actualCrc;
-            if (!res) qDebug("Protocol::read(): wrong crc");
-        }
-        return res;
-    };
+DefaultReader::DefaultReader(Protocol::Command cmd, void *buffer, int size)
+    : m_buffer(buffer)
+    , m_size(size)
+    , m_cmd(cmd)
+{}
 
-    do {
-        if (!wait(size + minFullSize, timeout)) {
-            return false;
-        }
+bool DefaultReader::isDataEnough(int size) const
+{
+    return size >= m_size;
+}
+
+bool DefaultReader::checkPackage(Protocol::Command cmd, const void *data, int size)
+{
+    if (m_cmd != cmd || m_size != size) {
+        return false;
     }
-    while (!readPackage());
+    memcpy(m_buffer, data, size);
     return true;
 }
 
-bool Protocol::write(Protocol::Command cmd, const void *data, size_t size)
-{
-    putch(marker);
-    putch((uint8_t) size + minSize);
-    putch((uint8_t) cmd);
-    m_port.write((const char *) data, (quint64) size);
-    putch(calcCrc(cmd, data, size));
-    return m_port.waitForBytesWritten(writeTimeout.count());
-}

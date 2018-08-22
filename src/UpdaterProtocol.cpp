@@ -146,10 +146,6 @@ bool UpdaterProtocol::writePackage(int pageNumber, int pageSizeLog, QByteArray p
 
 bool UpdaterProtocol::writePage(int pageNumber, int pageLogSize, QByteArray pageData)
 {
-    if (!configure()) {
-        return false;
-    }
-
     QDeadlineTimer timer(5000);
     forever {
         if (!writePackage(pageNumber, pageLogSize, pageData)) {
@@ -175,10 +171,6 @@ bool UpdaterProtocol::writePage(int pageNumber, int pageLogSize, QByteArray page
 
 int UpdaterProtocol::waitForRequest()
 {
-    if (!configure()) {
-        return false;
-    }
-
     QDeadlineTimer timer(5000);
     forever {
         ETypeBoot ansType;

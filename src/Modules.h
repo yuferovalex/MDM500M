@@ -5,13 +5,16 @@
 #include "Device.h"
 #include "Frequency.h"
 
-class ChannelTable;
 class DM500;
 class DM500M;
 class DM500FM;
 class EmptyModule;
 class Module;
 class UnknownModule;
+
+namespace Interfaces {
+
+class ChannelTable;
 
 class ModuleVisitor
 {
@@ -24,6 +27,8 @@ public:
     virtual void visit(EmptyModule &) = 0;
     virtual void visit(UnknownModule &) = 0;
 };
+
+} // namespace Interfaces
 
 class ScaleLevel
 {
@@ -71,7 +76,7 @@ class Module : public QObject
     Q_OBJECT
 
 public:
-    Module(int slot, DeviceData &data, std::shared_ptr<ChannelTable> chTable);
+    Module(int slot, DeviceData &data, std::shared_ptr<Interfaces::ChannelTable> chTable);
     bool isEmpty() const;
     QString type() const;
     int slot() const;
@@ -96,7 +101,7 @@ public:
     int thresholdLevel() const;
     int convertScaleLevelToSignalLevel(int value) const;
     void setThresholdLevel(int lvl);
-    virtual void accept(ModuleVisitor &visitor);
+    virtual void accept(Interfaces::ModuleVisitor &visitor);
 
 signals:
     void frequencyChanged();
@@ -112,7 +117,7 @@ protected:
     virtual int thresholdLevelsImpl(int8_t data) const;
     virtual int8_t convertThresholdLevels(int lvl) const;
     virtual bool validateFrequency(KiloHertz frequency) const;
-    virtual void setModuleStates(ModuleStates::States states);
+    virtual void setModuleStates(MDM500M::ModuleStates::States states);
 
     QString m_type;
     DeviceData &m_data;
@@ -126,7 +131,7 @@ private:
     friend class Device;
 
     QString m_channel;
-    std::shared_ptr<ChannelTable> m_chTable;
+    std::shared_ptr<Interfaces::ChannelTable> m_chTable;
     int m_slot;
 };
 
@@ -135,8 +140,8 @@ class EmptyModule : public Module
     Q_OBJECT
 
 public:
-    EmptyModule(int slot, DeviceData &data, std::shared_ptr<ChannelTable> chTable);
-    void accept(ModuleVisitor &visitor) override;
+    EmptyModule(int slot, DeviceData &data, std::shared_ptr<Interfaces::ChannelTable> chTable);
+    void accept(Interfaces::ModuleVisitor &visitor) override;
 };
 
 class UnknownModule : public Module
@@ -144,8 +149,8 @@ class UnknownModule : public Module
     Q_OBJECT
 
 public:
-    UnknownModule(int slot, DeviceData &data, std::shared_ptr<ChannelTable> chTable);
-    void accept(ModuleVisitor &visitor) override;
+    UnknownModule(int slot, DeviceData &data, std::shared_ptr<Interfaces::ChannelTable> chTable);
+    void accept(Interfaces::ModuleVisitor &visitor) override;
 };
 
 class DM500 : public Module
@@ -153,8 +158,8 @@ class DM500 : public Module
     Q_OBJECT
 
 public:
-    DM500(int slot, DeviceData &data, std::shared_ptr<ChannelTable> chTable);
-    void accept(ModuleVisitor &visitor) override;
+    DM500(int slot, DeviceData &data, std::shared_ptr<Interfaces::ChannelTable> chTable);
+    void accept(Interfaces::ModuleVisitor &visitor) override;
 
 protected:
     int scaleLevelImpl(int8_t data) const override;
@@ -183,7 +188,7 @@ public:
     };
     Q_ENUM(VideoStandart)
 
-    DM500M(int slot, DeviceData &data, std::shared_ptr<ChannelTable> chTable);
+    DM500M(int slot, DeviceData &data, std::shared_ptr<Interfaces::ChannelTable> chTable);
     VideoStandart videoStandart() const;
     SoundStandart soundStandart() const;
 
@@ -192,7 +197,7 @@ signals:
     void soundStandartChanged(SoundStandart);
 
 public:
-    void accept(ModuleVisitor &visitor) override;
+    void accept(Interfaces::ModuleVisitor &visitor) override;
     void setSoundStandart(SoundStandart soundStandart);
     void setVideoStandart(VideoStandart videoStandart);
 
@@ -205,12 +210,12 @@ class DM500FM : public Module
     Q_OBJECT
 
 public:
-    DM500FM(int slot, DeviceData &data, std::shared_ptr<ChannelTable> chTable);
+    DM500FM(int slot, DeviceData &data, std::shared_ptr<Interfaces::ChannelTable> chTable);
     bool isRds() const;
     bool isStereo() const;
     int volume() const;
     void setVolume(int volume);
-    void accept(ModuleVisitor &visitor) override;
+    void accept(Interfaces::ModuleVisitor &visitor) override;
 
 signals:
     void rdsChanged(bool);
@@ -219,10 +224,10 @@ signals:
 
 protected:
     bool validateFrequency(KiloHertz f) const override;
-    void setModuleStates(ModuleStates::States states) override;
+    void setModuleStates(MDM500M::ModuleStates::States states) override;
 };
 
-class ModuleFabricImpl : public ModuleFabric
+class ModuleFabric : public Interfaces::ModuleFabric
 {
 public:
     bool mustBeReplaced(Module *module, int typeIndex) const override;

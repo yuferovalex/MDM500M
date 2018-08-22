@@ -7,6 +7,12 @@
 
 #pragma pack(push, 1)
 
+enum class DeviceType : int
+{
+    MDM500,
+    MDM500M
+};
+
 /**
  * @brief Версия программного обеспечения
  */
@@ -99,18 +105,52 @@ static_assert(sizeof(HardwareVersion) == 4, "");
 
 struct SerialNumber
 {
-    QString toString() const
+    QString toString(DeviceType format) const
     {
-        return QString("PSN%1").arg(value, 9, 10, QChar('0'));
+        switch (format) {
+        case DeviceType::MDM500:
+            return QString("%1").arg(value, 5, 10, QChar('0'));
+        case DeviceType::MDM500M:
+            return QString("PSN%1").arg(value, 9, 10, QChar('0'));
+        default:
+            Q_ASSERT(false);
+            return QString();
+        }
     }
 
     uint32_t value;
 };
 
 /**
+ * @brief Кол-во слотов в МДМ-500 и МДМ-500М
+ */
+constexpr int kSlotCount = 16;
+
+/**
+ * @brief Уровни сигналов
+ */
+struct SignalLevels
+{
+    inline int8_t &operator [] (ptrdiff_t i)
+    {
+        return values[i];
+    }
+
+    inline int8_t operator [] (ptrdiff_t i) const
+    {
+        return values[i];
+    }
+
+    int8_t values[kSlotCount];
+};
+static_assert(sizeof(SignalLevels) == 16, "");
+
+namespace MDM500M {
+
+/**
  * @brief Версия аппаратного обеспечения МДМ-500М
  */
-constexpr HardwareVersion kMDM500MHardwareVersion = { 5, 1, 0 };
+constexpr HardwareVersion kHardwareVersion = { 5, 1, 0 };
 
 /**
  * @brief Информация об устройстве
@@ -166,15 +206,15 @@ static_assert(sizeof(ModuleConfig) == 5, "");
 /**
  * @brief Кол-во слотов в МДМ-500М
  */
-constexpr int kMDM500MSlotCount = 16;
+constexpr int kSlotCount = ::kSlotCount;
 
 /**
  * @brief Структура конфигурации устройства МДМ-500М
  */
 struct DeviceConfig
 {
-    ModuleConfig modules[kMDM500MSlotCount]; /**< Конфигурация всех модулей */
-    uint8_t control : 4;                     /**< Номер контрольного модуля */
+    ModuleConfig modules[kSlotCount]; /**< Конфигурация всех модулей */
+    uint8_t control : 4;              /**< Номер контрольного модуля */
     uint8_t         : 4;
 };
 static_assert(sizeof(DeviceConfig) == 81, "");
@@ -266,23 +306,48 @@ struct ModuleConfigWithSlot
 };
 static_assert(sizeof(ModuleConfigWithSlot) == 6, "");
 
-/**
- * @brief Уровни сигналов
- */
-struct SignalLevels
-{
-    inline int8_t &operator [] (ptrdiff_t i)
-    {
-        return values[i];
-    }
+typedef ::SignalLevels SignalLevels;
 
-    inline int8_t operator [] (ptrdiff_t i) const 
-    {
-        return values[i];
-    }
-    
-    int8_t values[kMDM500MSlotCount];
+} // namespace MDM500M
+
+namespace MDM500 {
+
+/**
+ * @brief Кол-во слотов в МДМ-500
+ */
+constexpr int kSlotCount = ::kSlotCount;
+
+/**
+ * @brief Информация об устройстве
+ */
+struct DeviceInfo
+{
+    uint16_t serialNumber;
 };
-static_assert(sizeof(SignalLevels) == 16, "");
+
+/**
+ * @brief Структура конфигурации модулей МДМ-500
+ */
+struct ModuleConfig
+{
+    uint16_t frequencyMhz;        /**< Частота, значение до запятой    */
+    uint8_t  frequencyKhz;        /**< Частота, значение после запятой */
+    uint8_t  isModule        : 1; /**< Модуль присутствует             */
+    uint8_t                  : 1;
+    uint8_t  blockDiagnostic : 1; /**< Блокировка диагностики          */
+};
+
+/**
+ * @brief Структура конфигурации МДМ-500
+ */
+struct DeviceConfig
+{
+    ModuleConfig modules[kSlotCount]; /**< Конфигурация всех модулей   */
+    uint8_t control;                  /**< Номер контрольного модуля   */
+};
+
+typedef ::SignalLevels SignalLevels;
+
+} // namespace MDM500
 
 #pragma pack(pop)

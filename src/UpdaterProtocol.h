@@ -14,11 +14,11 @@ class UpdaterProtocol
 {
 public:
     UpdaterProtocol(QSerialPort &device);
+    bool configure();
     bool writePage(int pageNumber, int pageLogSize, QByteArray pageData);
     int waitForRequest();
 
 private:
-    bool configure();
     bool wait(size_t size, QDeadlineTimer timer);
     uint8_t getChar();
     bool readPackage(ETypeBoot &type, int &page, QDeadlineTimer timer);

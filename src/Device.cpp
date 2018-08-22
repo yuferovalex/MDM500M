@@ -1,18 +1,24 @@
 #include "Device.h"
 #include "Modules.h"
 
-Device::Device(ModuleFabric *moduleFabric, QObject *parent)
+Device::Device(std::shared_ptr<Interfaces::ModuleFabric> moduleFabric, DeviceType type, QObject *parent)
     : QObject(parent)
     , m_moduleFabric(moduleFabric)
 {
-    for (int slot = 0; slot < kMDM500MSlotCount; ++slot) {
-        m_modules[slot] = moduleFabric->createModule(ModuleFabric::Empty, slot, m_data);
+    m_data.type = type;
+    for (int slot = 0; slot < kSlotCount; ++slot) {
+        m_modules[slot] = moduleFabric->createModule(Interfaces::ModuleFabric::Empty, slot, m_data);
     }
 }
 
 Device::~Device()
 {
     qDeleteAll(m_modules);
+}
+
+QString Device::type() const
+{
+    return m_data.type == DeviceType::MDM500 ? tr("МДМ-500") : tr("МДМ-500М");
 }
 
 bool Device::isError() const
@@ -22,13 +28,13 @@ bool Device::isError() const
 
 Module *Device::module(int slot) const
 {
-    Q_ASSERT(slot >= 0 && slot < kMDM500MSlotCount);
+    Q_ASSERT(slot >= 0 && slot < moduleCount());
     return m_modules[slot];
 }
 
 int Device::moduleCount() const
 {
-    return kMDM500MSlotCount;
+    return kSlotCount;
 }
 
 const DeviceData &Device::data() const
@@ -46,9 +52,9 @@ QString Device::name() const
     return m_name;
 }
 
-SerialNumber Device::serialNumber() const
+QString Device::serialNumber() const
 {
-    return m_data.info.serialNumber;
+    return m_data.info.serialNumber.toString(m_data.type);
 }
 
 SoftwareVersion Device::softwareVersion() const
@@ -67,7 +73,7 @@ void Device::setName(QString name)
 
 void Device::setControlModule(int slot)
 {
-    Q_ASSERT(slot >= 0 && slot < kMDM500MSlotCount);
+    Q_ASSERT(slot >= 0 && slot < moduleCount());
     if (m_data.config.control == slot) {
         return;
     }
@@ -75,16 +81,16 @@ void Device::setControlModule(int slot)
     emit controlModuleChanged(slot);
 }
 
-void Device::setInfo(DeviceInfo info)
+void Device::setInfo(MDM500M::DeviceInfo info)
 {
     m_data.info = info;
     emit infoChanged();
 }
 
-void Device::setConfig(const DeviceConfig &config)
+void Device::setConfig(const MDM500M::DeviceConfig &config)
 {
     m_data.config = config;
-    for (int slot = 0; slot < kMDM500MSlotCount; ++slot) {
+    for (int slot = 0; slot < moduleCount(); ++slot) {
         auto moduleConfig = config.modules[slot];
         auto &module = m_modules[slot];
         if (m_moduleFabric->mustBeReplaced(module, moduleConfig.type)) {
@@ -97,9 +103,9 @@ void Device::setConfig(const DeviceConfig &config)
     updateErrorStatus();
 }
 
-void Device::setErrors(DeviceErrors errors)
+void Device::setErrors(MDM500M::DeviceErrors errors)
 {
-    for (int slot = 0; slot < kMDM500MSlotCount; ++slot) {
+    for (int slot = 0; slot < moduleCount(); ++slot) {
         bool isChanged = false;
         auto  e = errors[slot];
         auto &c = m_data.config.modules[slot];
@@ -122,19 +128,19 @@ void Device::setErrors(DeviceErrors errors)
     updateErrorStatus();
 }
 
-void Device::setThresholdLevels(SignalLevels lvls)
+void Device::setThresholdLevels(MDM500M::SignalLevels lvls)
 {
     m_data.thresholdLevels = lvls;
-    for (int slot = 0; slot < kMDM500MSlotCount; ++slot) {
+    for (int slot = 0; slot < moduleCount(); ++slot) {
         auto &module = m_modules[slot];
         emit module->thresholdLevelChanged(module->thresholdLevel());
     }
 }
 
-void Device::setSignalLevels(SignalLevels lvls)
+void Device::setSignalLevels(MDM500M::SignalLevels lvls)
 {
 
-    for (int slot = 0; slot < kMDM500MSlotCount; ++slot) {
+    for (int slot = 0; slot < moduleCount(); ++slot) {
         auto &module = m_modules[slot];
         if (m_data.signalLevels[slot] != lvls[slot]) {
             m_data.signalLevels[slot] = lvls[slot];
@@ -143,16 +149,16 @@ void Device::setSignalLevels(SignalLevels lvls)
     }
 }
 
-void Device::setModuleStates(ModuleStates states)
+void Device::setModuleStates(MDM500M::ModuleStates states)
 {
-    for (int slot = 0; slot < kMDM500MSlotCount; ++slot) {
+    for (int slot = 0; slot < moduleCount(); ++slot) {
         m_modules[slot]->setModuleStates(states[slot]);
     }
 }
 
 void Device::resetChangedError()
 {
-    for (int slot = 0; slot < kMDM500MSlotCount; ++slot) {
+    for (int slot = 0; slot < moduleCount(); ++slot) {
         auto &c = m_data.config.modules[slot];
         if (c.changed) {
             c.changed = false;

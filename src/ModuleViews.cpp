@@ -239,7 +239,7 @@ void DM500FMView::onStereoChanged(bool on)
     ui->stereoStatus->setText(text);
 }
 
-ModuleView *ModuleViewFabricImpl::produce(Module *module, QWidget *parent)
+ModuleView *ModuleViewFabric::produce(Module *module, QWidget *parent)
 {
     if (auto m = dynamic_cast<DM500 *>(module)) {
         return new DM500View(*m, parent);

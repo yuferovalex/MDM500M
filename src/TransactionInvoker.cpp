@@ -1,16 +1,16 @@
 #include <QThread>
 
-#include "Commands.h"
-#include "Driver.h"
+#include "Transactions.h"
+#include "TransactionInvoker.h"
 
-Driver::Driver()
+TransactionInvoker::TransactionInvoker()
 {
     m_exit = false;
     m_thread = QThread::create([this] { loop(); });
     m_thread->start();
 }
 
-Driver::~Driver()
+TransactionInvoker::~TransactionInvoker()
 {
     m_exit.store(true, std::memory_order_release);
     m_cancellationSource.cancel();
@@ -19,16 +19,16 @@ Driver::~Driver()
     clear();
 }
 
-void Driver::exec(Command *cmd)
+void TransactionInvoker::exec(Interfaces::Transaction *transaction)
 {
-    if (!cmd) return;
+    if (!transaction) return;
     std::unique_lock<std::mutex> lock(m_mutex);
-    cmd->moveToThread(m_thread);
-    m_queue.push(cmd);
+    transaction->moveToThread(m_thread);
+    m_queue.push(transaction);
     m_cv.notify_all();
 }
 
-void Driver::clear()
+void TransactionInvoker::clear()
 {
     std::unique_lock<std::mutex> lock(m_mutex);
     while (!m_queue.empty()) {
@@ -37,7 +37,7 @@ void Driver::clear()
     }
 }
 
-std::unique_ptr<Command> Driver::nextCmd()
+std::unique_ptr<Interfaces::Transaction> TransactionInvoker::nextTransaction()
 {
     if (m_exit.load(std::memory_order_acquire)) {
         return nullptr;
@@ -53,13 +53,13 @@ std::unique_ptr<Command> Driver::nextCmd()
     }
     auto cmd = m_queue.front();
     m_queue.pop();
-    return std::unique_ptr<Command>(cmd);
+    return std::unique_ptr<Interfaces::Transaction>(cmd);
 }
 
-void Driver::loop()
+void TransactionInvoker::loop()
 {
     QSerialPort port;
-    while (auto cmd = nextCmd()) {
+    while (auto cmd = nextTransaction()) {
         try {
             cmd->exec(port, m_cancellationSource.token());
         }

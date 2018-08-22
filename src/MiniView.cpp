@@ -2,21 +2,18 @@
 
 #include "Modules.h"
 #include "MiniView.h"
-#include "SettingsView.h"
 #include "ui_MiniView.h"
 
-MiniView::MiniView(SettingsView *settingsView)
+MiniView::MiniView(Device *device)
     : ui(new Ui::MiniView)
-    , m_settingsView(settingsView)
     , m_group(new QButtonGroup(this))
-    , m_device(m_settingsView->device())
+    , m_device(device)
 {
-    Q_ASSERT(settingsView != nullptr);
-    Q_ASSERT(settingsView->device() != nullptr);
+    Q_ASSERT(device != nullptr);
 
     ui->setupUi(this);
     adjustSize();
-    for (int slot = 0; slot < kMDM500MSlotCount; ++slot) {
+    for (int slot = 0; slot < MDM500M::kSlotCount; ++slot) {
         auto ctrl  = findChild<QAbstractButton *>(QString("control_%1").arg(slot));
         m_group->addButton(ctrl, slot);
         onModuleReplaced(m_device->module(slot));
@@ -30,13 +27,9 @@ MiniView::MiniView(SettingsView *settingsView)
     connect(m_group, SIGNAL(buttonClicked(int)), this, SLOT(onCurrentButtonChanged(int)));
 }
 
-MiniView::~MiniView()
-{
-}
-
 void MiniView::onCurrentButtonChanged(int id)
 {
-    m_settingsView->setControlModule(id);
+    emit controlModuleChanged(id);
 }
 
 void MiniView::onModuleReplaced(Module *module)

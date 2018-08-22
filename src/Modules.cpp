@@ -1,7 +1,7 @@
 #include "ChannelTable.h"
 #include "Modules.h"
 
-Module::Module(int slot, DeviceData &data, std::shared_ptr<ChannelTable> chTable)
+Module::Module(int slot, DeviceData &data, std::shared_ptr<Interfaces::ChannelTable> chTable)
     : m_data(data)
     , m_channel(chTable->channel(KiloHertz(m_data.config.modules[slot].frequency)))
     , m_chTable(chTable)
@@ -139,7 +139,7 @@ void Module::setThresholdLevel(int lvl)
     emit thresholdLevelChanged(lvl);
 }
 
-void Module::accept(ModuleVisitor &visitor)
+void Module::accept(Interfaces::ModuleVisitor &visitor)
 {
     visitor.visit(*this);
 }
@@ -170,12 +170,12 @@ bool Module::validateFrequency(KiloHertz frequency) const
     return true;
 }
 
-void Module::setModuleStates(ModuleStates::States states)
+void Module::setModuleStates(MDM500M::ModuleStates::States states)
 {
     Q_UNUSED(states);
 }
 
-EmptyModule::EmptyModule(int slot, DeviceData &data, std::shared_ptr<ChannelTable> chTable)
+EmptyModule::EmptyModule(int slot, DeviceData &data, std::shared_ptr<Interfaces::ChannelTable> chTable)
     : Module(slot, data, chTable)
 {
     m_type = tr("-");
@@ -183,12 +183,12 @@ EmptyModule::EmptyModule(int slot, DeviceData &data, std::shared_ptr<ChannelTabl
     m_isSupportSignalLevel = false;
 }
 
-void EmptyModule::accept(ModuleVisitor &visitor)
+void EmptyModule::accept(Interfaces::ModuleVisitor &visitor)
 {
     visitor.visit(*this);
 }
 
-UnknownModule::UnknownModule(int slot, DeviceData &data, std::shared_ptr<ChannelTable> chTable)
+UnknownModule::UnknownModule(int slot, DeviceData &data, std::shared_ptr<Interfaces::ChannelTable> chTable)
     : Module(slot, data, chTable)
 {
     m_type = tr("Неизвестный");
@@ -196,19 +196,19 @@ UnknownModule::UnknownModule(int slot, DeviceData &data, std::shared_ptr<Channel
     m_isSupportSignalLevel = false;
 }
 
-void UnknownModule::accept(ModuleVisitor &visitor)
+void UnknownModule::accept(Interfaces::ModuleVisitor &visitor)
 {
     visitor.visit(*this);
 }
 
-DM500::DM500(int slot, DeviceData &data, std::shared_ptr<ChannelTable> chTable)
+DM500::DM500(int slot, DeviceData &data, std::shared_ptr<Interfaces::ChannelTable> chTable)
     : Module(slot, data, chTable)
 {
     m_type = tr("ДМ-500");
     m_isSupportSignalLevel = false;
 }
 
-void DM500::accept(ModuleVisitor &visitor)
+void DM500::accept(Interfaces::ModuleVisitor &visitor)
 {
     visitor.visit(*this);
 }
@@ -258,7 +258,7 @@ bool DM500::validateFrequency(KiloHertz f) const
     return 48_MHz <= f && f <= 862_MHz;
 }
 
-DM500M::DM500M(int slot, DeviceData &data, std::shared_ptr<ChannelTable> chTable)
+DM500M::DM500M(int slot, DeviceData &data, std::shared_ptr<Interfaces::ChannelTable> chTable)
     : Module(slot, data, chTable)
 {
     m_type = tr("ДМ-500М");
@@ -278,7 +278,7 @@ DM500M::SoundStandart DM500M::soundStandart() const
     return SoundStandart(m_data.config.modules[slot()].soundStandart);
 }
 
-void DM500M::accept(ModuleVisitor &visitor)
+void DM500M::accept(Interfaces::ModuleVisitor &visitor)
 {
     visitor.visit(*this);
 }
@@ -306,7 +306,7 @@ bool DM500M::validateFrequency(KiloHertz f) const
     return 48_MHz <= f && f <= 862_MHz;
 }
 
-DM500FM::DM500FM(int slot, DeviceData &data, std::shared_ptr<ChannelTable> chTable)
+DM500FM::DM500FM(int slot, DeviceData &data, std::shared_ptr<Interfaces::ChannelTable> chTable)
     : Module(slot, data, chTable)
 {
     m_type = tr("ДМ-500FM");
@@ -341,7 +341,7 @@ void DM500FM::setVolume(int v)
     emit volumeChanged(v);
 }
 
-void DM500FM::accept(ModuleVisitor &visitor)
+void DM500FM::accept(Interfaces::ModuleVisitor &visitor)
 {
     visitor.visit(*this);
 }
@@ -351,7 +351,7 @@ bool DM500FM::validateFrequency(KiloHertz f) const
     return (62_MHz <= f && f <= 74_MHz) || (76_MHz <= f && f <= 108_MHz);
 }
 
-void DM500FM::setModuleStates(ModuleStates::States states)
+void DM500FM::setModuleStates(MDM500M::ModuleStates::States states)
 {
     auto &config = m_data.config.modules[slot()];
     if (config.rds != states.rds) {
@@ -364,25 +364,25 @@ void DM500FM::setModuleStates(ModuleStates::States states)
     }
 }
 
-bool ModuleFabricImpl::mustBeReplaced(Module *module, int typeIndex) const
+bool ModuleFabric::mustBeReplaced(Module *module, int typeIndex) const
 {
     switch (typeIndex) {
-    case  0: return typeid(*module) != typeid(class EmptyModule &);
-    case  1: return typeid(*module) != typeid(class DM500 &);
-    case  2: return typeid(*module) != typeid(class DM500M &);
-    case  3: return typeid(*module) != typeid(class DM500FM &);
-    default: return typeid(*module) != typeid(class UnknownModule &);
+    case Empty   : return typeid(*module) != typeid(class EmptyModule &);
+    case DM500   : return typeid(*module) != typeid(class DM500 &);
+    case DM500M  : return typeid(*module) != typeid(class DM500M &);
+    case DM500FM : return typeid(*module) != typeid(class DM500FM &);
+    default      : return typeid(*module) != typeid(class UnknownModule &);
     }
 }
 
-Module *ModuleFabricImpl::createModule(int typeIndex, int slot, DeviceData &data)
+Module *ModuleFabric::createModule(int typeIndex, int slot, DeviceData &data)
 {
     switch (typeIndex) {
-    case  0: return new class EmptyModule(slot, data, NullChannelTable::globalInstance());
-    case  1: return new class DM500(slot, data, TvChannelTable::globalInstance());
-    case  2: return new class DM500M(slot, data, TvChannelTable::globalInstance());
-    case  3: return new class DM500FM(slot, data, NullChannelTable::globalInstance());
-    default: return new class UnknownModule(slot, data, NullChannelTable::globalInstance());
+    case Empty   : return new class EmptyModule(slot, data, NullChannelTable::globalInstance());
+    case DM500   : return new class DM500(slot, data, TvChannelTable::globalInstance());
+    case DM500M  : return new class DM500M(slot, data, TvChannelTable::globalInstance());
+    case DM500FM : return new class DM500FM(slot, data, NullChannelTable::globalInstance());
+    default      : return new class UnknownModule(slot, data, NullChannelTable::globalInstance());
     }
 }
 
@@ -398,7 +398,7 @@ bool ModuleError::isError() const
 
 QString ModuleError::toString() const
 {
-    if (m_errors == NoErrors)              return QObject::tr(QT_TR_NOOP("Нет ошибок"));
+    if (m_errors == NoErrors)              return QObject::tr(QT_TR_NOOP("Норма"));
     if (m_errors.testFlag(SlotFault     )) return QObject::tr(QT_TR_NOOP("Слот неисправен"));
     if (m_errors.testFlag(NotResponding )) return QObject::tr(QT_TR_NOOP("Не отвечает"));
     if (m_errors.testFlag(PatfFault     )) return QObject::tr(QT_TR_NOOP("Авария ФАПЧ"));

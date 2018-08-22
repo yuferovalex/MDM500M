@@ -2,36 +2,21 @@
 #include <QBrush>
 #include <QPainter>
 #include <QPen>
-#include <QVBoxLayout>
 
 #include "Scale.h"
 
-const char *Scale::m_colors[10]
+const QBrush Scale::kUnitsColors[10]
 {
-    "#FF0066",
-    "#FF0000",
-    "#FFCC99",
-    "#FFFF00",
-    "green",
-    "#99CC00",
-    "#99CC00",
-    "#99CC00",
-    "#B2CC6B",
-    "white"
-};
-
-const char *Scale::m_disabledColors[10]
-{
-    "lightgray",
-    "lightgray",
-    "lightgray",
-    "lightgray",
-    "lightgray",
-    "lightgray",
-    "lightgray",
-    "lightgray",
-    "lightgray",
-    "lightgray"
+    QBrush("#FF0066"),
+    QBrush("#FF0000"),
+    QBrush("#FFCC99"),
+    QBrush("#FFFF00"),
+    QBrush(Qt::green),
+    QBrush("#99CC00"),
+    QBrush("#99CC00"),
+    QBrush("#99CC00"),
+    QBrush("#B2CC6B"),
+    QBrush(Qt::white)
 };
 
 Scale::Scale(QWidget *parent)
@@ -39,19 +24,7 @@ Scale::Scale(QWidget *parent)
     , m_signalLevel(0)
     , m_empty(true)
 {
-    auto layout = new QVBoxLayout(this);
-    layout->setMargin(0);
-    layout->setSpacing(3);
-
-    for (int i = 0; i < m_unitsCount; ++i) {
-        auto widget = new QWidget(this);
-        auto palette = widget->palette();
-        widget->setPalette(palette);
-        widget->setMinimumHeight(10);
-        layout->addWidget(widget);
-        m_widgets[i] = widget;
-    }
-    invalidate();
+    setMinimumSize(QSize(30, 127));
 }
 
 void Scale::setEmpty(bool value)
@@ -60,7 +33,7 @@ void Scale::setEmpty(bool value)
         return;
     }
     m_empty = value;
-    invalidate();
+    update();
 }
 
 void Scale::setSignalLevel(int value)
@@ -72,21 +45,21 @@ void Scale::setSignalLevel(int value)
         return;
     }
     m_signalLevel = value;
-    invalidate();
+    update();
 }
 
-void Scale::invalidate()
+void Scale::paintEvent(QPaintEvent *)
 {
-    int lvl = m_empty ? 0 : m_signalLevel + 2;
-
-    for (int i = 0; i < m_unitsCount; ++i) {
-        auto color = m_unitsCount - lvl < i
-                   ? m_colors[i]
-                   : m_disabledColors[i];
-        QString style = "QWidget {"
-                        "   background-color: %1;"
-                        "   border: 1px solid gray;"
-                        "}";
-        m_widgets[i]->setStyleSheet(style.arg(color));
+    static const QPen   border(Qt::gray, 1);
+    static const QBrush inactive(Qt::lightGray);
+    QPainter painter(this);
+    painter.setPen(border);
+    QRect unitRect(1, 1, width() - 2, 8);
+    QPoint delta(0, 13);
+    int invertedLvl = kUnitsCount - (m_signalLevel + !m_empty);
+    for (int unit = 0; unit < kUnitsCount; ++unit) {
+        painter.setBrush(invertedLvl <= unit ? kUnitsColors[unit] : inactive);
+        painter.drawRect(unitRect);
+        unitRect.translate(delta);
     }
 }

@@ -92,7 +92,7 @@ private:
     DM500FM &m_module;
 };
 
-class ModuleViewFabricImpl : public ModuleViewFabric
+class ModuleViewFabric : public Interfaces::ModuleViewFabric
 {
 public:
     ModuleView *produce(Module *module, QWidget *parent = nullptr) override;

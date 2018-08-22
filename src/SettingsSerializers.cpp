@@ -4,10 +4,10 @@
 
 #include "Device.h"
 #include "Modules.h"
-#include "XmlSerializer.h"
+#include "SettingsSerializers.h"
 
 namespace {
-struct Get : ModuleVisitor
+struct Get : Interfaces::ModuleVisitor
 {
     void visit(Module &) override;
     void visit(DM500 &) override;
@@ -19,7 +19,7 @@ struct Get : ModuleVisitor
     QVariantMap data;
 };
 
-struct Set : ModuleVisitor
+struct Set : Interfaces::ModuleVisitor
 {
     void visit(Module &) override;
     void visit(DM500 &) override;
@@ -34,6 +34,11 @@ struct Set : ModuleVisitor
     QString errors;
     QTextStream stream { &errors };
 };
+}
+
+QString XmlSerializer::fileExtension() const
+{
+    return QString("XML (*.xml)");
 }
 
 void XmlSerializer::serialize(QIODevice &out, Device &device)
@@ -85,7 +90,7 @@ bool XmlSerializer::deserialize(QIODevice &in, Device &device, QString &errors)
 {
     QXmlStreamReader xml(&in);
     Set visitor;
-    std::array<QVariantMap, kMDM500MSlotCount> data;
+    std::array<QVariantMap, MDM500M::kSlotCount> data;
     bool isConfig = false;
     visitor.stream << QObject::tr("Отчет о восстановлении настроек:") << endl;
     // Чтение и разбор данных
