@@ -17,14 +17,18 @@ void EventLog::initialMessage(MDM500M::DeviceErrors log)
 {
     open();
     out() << tr("Начало работы с устройством \"%1\"").arg(m_device.name()) << endl;
-    out() << tr("Серийный номер:  %1").arg(m_device.serialNumber()) << endl;
-    out() << tr("Версия прошивки: %1").arg(m_device.softwareVersion().toString()) << endl;
-    if (log) {
-        out() << tr("Со времени последнего подключения произошли следующие ошибки:") << endl;
-        reportOldErrors(log);
-    }
-    else {
-        out() << tr("Со времени последнего подключения ошибок не обнаружено") << endl;
+    out() << tr("Модель устройства:") << ' ' << m_device.type() << endl;
+    out() << tr("Серийный номер:") << ' ' << m_device.serialNumber() << endl;
+    // Старое устройство не поддерживает перепрошивку и журналирование ошибок
+    if (!m_device.isMDM500()) {
+        out() << tr("Версия прошивки:") << m_device.softwareVersion().toString() << endl;
+        if (log) {
+            out() << tr("Со времени последнего подключения произошли следующие ошибки:") << endl;
+            reportOldErrors(log);
+        }
+        else {
+            out() << tr("Со времени последнего подключения ошибок не обнаружено") << endl;
+        }
     }
     out() << tr("Текущее состояние модулей:") << endl;
     reportCurrentErrors();
