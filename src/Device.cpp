@@ -1,19 +1,25 @@
 #include "Device.h"
 #include "Modules.h"
 
-Device::Device(std::shared_ptr<Interfaces::ModuleFabric> moduleFabric, DeviceType type, QObject *parent)
-    : QObject(parent)
-    , m_moduleFabric(moduleFabric)
+Device::Device(std::shared_ptr<Interfaces::ModuleFabric> moduleFabric, DeviceType type)
+    : m_moduleFabric(moduleFabric)
 {
     m_data.type = type;
     for (int slot = 0; slot < kSlotCount; ++slot) {
-        m_modules[slot] = moduleFabric->createModule(Interfaces::ModuleFabric::Empty, slot, m_data);
+        m_modules[slot] = moduleFabric->createModule(ModuleInfo<EmptyModule>::typeIndex(),
+                                                     slot,
+                                                     m_data);
     }
 }
 
 Device::~Device()
 {
     qDeleteAll(m_modules);
+}
+
+bool Device::isMDM500() const
+{
+    return m_data.type == DeviceType::MDM500;
 }
 
 QString Device::type() const
@@ -81,7 +87,7 @@ void Device::setControlModule(int slot)
     emit controlModuleChanged(slot);
 }
 
-void Device::setInfo(MDM500M::DeviceInfo info)
+void Device::setInfo(const MDM500M::DeviceInfo &info)
 {
     m_data.info = info;
     emit infoChanged();
@@ -128,7 +134,7 @@ void Device::setErrors(MDM500M::DeviceErrors errors)
     updateErrorStatus();
 }
 
-void Device::setThresholdLevels(MDM500M::SignalLevels lvls)
+void Device::setThresholdLevels(const MDM500M::SignalLevels &lvls)
 {
     m_data.thresholdLevels = lvls;
     for (int slot = 0; slot < moduleCount(); ++slot) {
@@ -137,9 +143,8 @@ void Device::setThresholdLevels(MDM500M::SignalLevels lvls)
     }
 }
 
-void Device::setSignalLevels(MDM500M::SignalLevels lvls)
+void Device::setSignalLevels(const MDM500M::SignalLevels &lvls)
 {
-
     for (int slot = 0; slot < moduleCount(); ++slot) {
         auto &module = m_modules[slot];
         if (m_data.signalLevels[slot] != lvls[slot]) {
@@ -147,6 +152,7 @@ void Device::setSignalLevels(MDM500M::SignalLevels lvls)
             emit module->signalLevelChanged(module->scaleLevel(), module->signalLevel());
         }
     }
+    checkLowLevels();
 }
 
 void Device::setModuleStates(MDM500M::ModuleStates states)
@@ -182,4 +188,20 @@ void Device::updateErrorStatus()
     }
     m_isError = isErrors;
     emit errorsChanged(m_isError);
+}
+
+void Device::checkLowLevels()
+{
+    if (m_data.type == DeviceType::MDM500M) {
+        return ;
+    }
+    for (int slot = 0; slot < kSlotCount; ++slot) {
+        auto &config = m_data.config.modules[slot];
+        bool lowLevel = m_data.signalLevels[slot] == 0;
+        if (config.isModule && !config.blockDiagnostic && config.lowLevel != lowLevel) {
+            config.lowLevel = lowLevel;
+            emit module(slot)->errorsChanged();
+        }
+    }
+    updateErrorStatus();
 }

@@ -29,6 +29,7 @@ void SearchDevice::exec(QSerialPort &port, CancelToken cancelled)
             }
             port.setPort(info);
             if (port.open(QIODevice::ReadWrite)) {
+                port.clear();
                 if (tryGetDeviceInfo(port)) {
                     return ;
                 }
@@ -41,17 +42,47 @@ void SearchDevice::exec(QSerialPort &port, CancelToken cancelled)
 
 bool SearchDevice::tryGetDeviceInfo(QSerialPort &port)
 {
+    using namespace std::chrono_literals;
+
     Protocol proto(port);
     if (!proto.configure()) {
         return false;
     }
-    MDM500M::DeviceInfo info;
-    bool received = proto.get(Protocol::Command::ReadInfo, info);
-    if (received && info.hardwareVersion == MDM500M::kHardwareVersion) {
-        emit found(DeviceType::MDM500M);
-        return true;
+
+    struct Reader
+    {
+        bool isDataEnough(int size) const
+        {
+            constexpr int min = std::min<int>(sizeof(MDM500::DeviceInfo),
+                                              sizeof(MDM500M::DeviceInfo));
+            return size >= min;
+        }
+
+        bool checkPackage(Protocol::Command cmd, const void *data, int size)
+        {
+            if (cmd != Protocol::Command::ReadInfo) {
+                return false;
+            }
+            if (size == sizeof(MDM500::DeviceInfo)) {
+                type = DeviceType::MDM500;
+                return true;
+            }
+            if (size == sizeof(MDM500M::DeviceInfo)) {
+                type = DeviceType::MDM500M;
+                auto &&info = *reinterpret_cast<const MDM500M::DeviceInfo *>(data);
+                return info.hardwareVersion == MDM500M::kHardwareVersion;
+            }
+            return false;
+        }
+
+        DeviceType type;
+    } reader;
+
+    bool received = proto.get(Protocol::Command::ReadInfo, reader, 1s, Protocol::ReaderTag());
+    if (received) {
+        emit found(reader.type);
     }
-    return false;
+    return received;
 }
 
 namespace MDM500M {
@@ -296,3 +327,129 @@ UpdateFirmware *TransactionFabric::updateFirmware(Firmware firmware)
 
 } // namespace MDM500M
 
+namespace MDM500 {
+
+GetAllDeviceInfo::GetAllDeviceInfo()
+{
+    qRegisterMetaType<Interfaces::GetAllDeviceInfo::Response>();
+}
+
+void GetAllDeviceInfo::exec(QSerialPort &port, CancelToken cancelled)
+{
+    Protocol proto(port);
+
+    DeviceInfo info;
+    DeviceConfig config;
+    SignalLevels signalLevels;
+
+    CHECK(proto.get(Protocol::Command::ReadInfo, info));
+    CHECK(proto.get(Protocol::Command::ReadConfig, config));
+    CHECK(proto.get(Protocol::Command::ReadSignalLevels, signalLevels));
+
+    Response response;
+    memset(&response, 0, sizeof(Response));
+    response.info.serialNumber.value = info.serialNumber;
+    response.config = config.convertToMDM500M();
+    response.signalLevels = signalLevels;
+    response.log = MDM500M::DeviceErrors {};
+    emit success(std::move(response));
+}
+
+UpdateDeviceInfo::UpdateDeviceInfo()
+{
+    qRegisterMetaType<Interfaces::UpdateDeviceInfo::Response>();
+}
+
+void UpdateDeviceInfo::exec(QSerialPort &port, CancelToken cancelled)
+{
+    Protocol proto(port);
+    Response response;
+    memset(&response, 0, sizeof(Response));
+
+    CHECK(proto.get(Protocol::Command::ReadSignalLevels, response.signalLevels));
+
+    emit success(std::move(response));
+}
+
+SaveConfigToEprom::SaveConfigToEprom(const MDM500M::DeviceConfig &config)
+    : m_config(DeviceConfig::fromMDM500M(config))
+{
+}
+
+void SaveConfigToEprom::exec(QSerialPort &port, CancelToken cancelled)
+{
+    using namespace std::chrono_literals;
+
+    struct Reader
+    {
+        bool isDataEnough(int size) const
+        {
+            return size >= 0;
+        }
+
+        bool checkPackage(Protocol::Command cmd, const void *, int size)
+        {
+            if (size != 0) {
+                return false;
+            }
+            if (cmd == Protocol::Command::Ok) {
+                deviceCorruptionDetected = false;
+                return true;
+            }
+            if (cmd == Protocol::Command::Error) {
+                deviceCorruptionDetected = true;
+                return true;
+            }
+            return false;
+        }
+
+        bool deviceCorruptionDetected = false;
+    } reader;
+
+    Protocol proto(port);
+
+    CHECK(proto.set(Protocol::Command::WriteConfig, m_config, reader, 2s, Protocol::ReaderTag()));
+
+    if (reader.deviceCorruptionDetected) {
+        emit deviceCorruptionDetected();
+        return ;
+    }
+    emit success();
+}
+
+GetAllDeviceInfo *TransactionFabric::getAllDeviceInfo()
+{
+    return new GetAllDeviceInfo();
+}
+
+UpdateDeviceInfo *TransactionFabric::updateDeviceInfo()
+{
+    return new UpdateDeviceInfo();
+}
+
+SaveConfigToEprom *TransactionFabric::saveConfigToEprom(const MDM500M::DeviceConfig &config)
+{
+    return new SaveConfigToEprom(config);
+}
+
+Interfaces::SetControlModule *TransactionFabric::setControlModule(int)
+{
+    return nullptr;
+}
+
+Interfaces::SetModuleConfig *TransactionFabric::setModuleConfig(int, MDM500M::ModuleConfig)
+{
+    return nullptr;
+}
+
+Interfaces::SetThresholdLevels *TransactionFabric::setThresholdLevels(const SignalLevels &)
+{
+    return nullptr;
+}
+
+Interfaces::UpdateFirmware *TransactionFabric::updateFirmware(Firmware)
+{
+    return nullptr;
+}
+
+} // namespace MDM500

@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>609</width>
-    <height>494</height>
+    <width>578</width>
+    <height>393</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -16,6 +16,11 @@
   <property name="styleSheet">
    <string notr="true">.QLabel {
 	font-size: 12pt;
+}
+
+#mainPage {
+	
+	background-color: rgb(255, 255, 255);
 }
 
 #serialNumber, #softwareVersion, #deviceMainHeader, #deviceConfigHeader {
@@ -44,7 +49,8 @@
 	padding: 0;
 	font-weight: 900;
 	color: #3A6AB4;
-}</string>
+}
+</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout_5">
    <property name="spacing">
@@ -84,11 +90,11 @@
         </widget>
        </item>
        <item>
-        <layout class="QGridLayout" name="gridLayout">
+        <layout class="QGridLayout" name="deviceMainInfoGrid" rowminimumheight="30,30,30">
          <item row="0" column="0">
           <widget class="QLabel" name="deviceNameLabel">
            <property name="sizePolicy">
-            <sizepolicy hsizetype="Expanding" vsizetype="Minimum">
+            <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
              <horstretch>0</horstretch>
              <verstretch>0</verstretch>
             </sizepolicy>
@@ -133,12 +139,6 @@
          </item>
          <item row="1" column="0">
           <widget class="QLabel" name="deviceSerialNumberLabel">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Expanding" vsizetype="Minimum">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
            <property name="text">
             <string>Серийный номер</string>
            </property>
@@ -149,12 +149,6 @@
          </item>
          <item row="1" column="1">
           <widget class="QLabel" name="serialNumber">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Expanding" vsizetype="Minimum">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
            <property name="text">
             <string notr="true">Н/Д</string>
            </property>
@@ -165,12 +159,6 @@
          </item>
          <item row="2" column="0">
           <widget class="QLabel" name="deviceSoftwareVersionLabel">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Expanding" vsizetype="Minimum">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
            <property name="text">
             <string>Версия ПО</string>
            </property>
@@ -288,6 +276,12 @@
        </item>
        <item>
         <widget class="QTableView" name="configTable">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
          <property name="minimumSize">
           <size>
            <width>560</width>
@@ -310,6 +304,9 @@
          </property>
          <property name="selectionBehavior">
           <enum>QAbstractItemView::SelectRows</enum>
+         </property>
+         <property name="showGrid">
+          <bool>true</bool>
          </property>
         </widget>
        </item>

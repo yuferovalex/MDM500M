@@ -1,9 +1,12 @@
 #pragma once
 
+#include <assert.h>
 #include <stdint.h>
 
 #include <QString>
 #include <QVersionNumber>
+
+#include "Frequency.h"
 
 #pragma pack(push, 1)
 
@@ -330,6 +333,26 @@ struct DeviceInfo
  */
 struct ModuleConfig
 {
+    MDM500M::ModuleConfig convertToMDM500M() const
+    {
+        MDM500M::ModuleConfig retval {};
+        retval.type = isModule;
+        retval.isModule = isModule;
+        retval.frequency = frequencyMhz * 1000 + frequencyKhz * 10;
+        retval.blockDiagnostic = blockDiagnostic;
+        return retval;
+    }
+
+    static ModuleConfig fromMDM500M(MDM500M::ModuleConfig config)
+    {
+        ModuleConfig retval;
+        retval.frequencyMhz = config.frequency / 1000;
+        retval.frequencyKhz = (config.frequency / 10) % 100;
+        retval.blockDiagnostic = config.blockDiagnostic;
+        retval.isModule = config.isModule;
+        return retval;
+    }
+
     uint16_t frequencyMhz;        /**< Частота, значение до запятой    */
     uint8_t  frequencyKhz;        /**< Частота, значение после запятой */
     uint8_t  isModule        : 1; /**< Модуль присутствует             */
@@ -342,6 +365,26 @@ struct ModuleConfig
  */
 struct DeviceConfig
 {
+    MDM500M::DeviceConfig convertToMDM500M() const
+    {
+        MDM500M::DeviceConfig retval {};
+        for (int slot = 0; slot < kSlotCount; ++slot) {
+            retval.modules[slot] = modules[slot].convertToMDM500M();
+        }
+        retval.control = control;
+        return retval;
+    }
+
+    static DeviceConfig fromMDM500M(const MDM500M::DeviceConfig &config)
+    {
+        DeviceConfig retval {};
+        for (int slot = 0; slot < kSlotCount; ++slot) {
+            retval.modules[slot] = ModuleConfig::fromMDM500M(config.modules[slot]);
+        }
+        retval.control = config.control;
+        return retval;
+    }
+
     ModuleConfig modules[kSlotCount]; /**< Конфигурация всех модулей   */
     uint8_t control;                  /**< Номер контрольного модуля   */
 };
@@ -349,5 +392,280 @@ struct DeviceConfig
 typedef ::SignalLevels SignalLevels;
 
 } // namespace MDM500
+
+class DM500;
+class DM500M;
+class DM500FM;
+class EmptyModule;
+class UnknownModule;
+
+template <typename T>
+struct ModuleInfo
+{
+};
+
+template <>
+struct ModuleInfo<EmptyModule>
+{
+    constexpr static int typeIndex()
+    {
+        return 0;
+    }
+};
+
+template <>
+struct ModuleInfo<UnknownModule>
+{
+    constexpr static int typeIndex()
+    {
+        return 15;
+    }
+};
+
+template <>
+struct ModuleInfo<DM500>
+{
+    constexpr static int typeIndex()
+    {
+        return 1;
+    }
+
+    constexpr static KiloHertz minFrequency()
+    {
+        return 48_MHz;
+    }
+
+    constexpr static KiloHertz maxFrequency()
+    {
+        return 862_MHz;
+    }
+
+    template<typename T, typename Q>
+    constexpr static bool validateFrequency(Frequency<T, Q> frequency)
+    {
+        return minFrequency() <= frequency && frequency <= maxFrequency();
+    }
+
+    constexpr static bool signalLevelSupport()
+    {
+        return false;
+    }
+
+    constexpr static bool validateThresholdLevel(int value)
+    {
+        switch (value) {
+        case 1: case 3: case 5: case 7: case 9: return true;
+        default: return false;
+        }
+    }
+
+    constexpr static int deserializeScaleLevel(uint8_t data)
+    {
+        switch (data) {
+        case 0: return 0;
+        case 1: return 3;
+        case 2: return 5;
+        case 3: return 7;
+        case 4: return 9;
+        default:
+            Q_ASSERT(false);
+            return 0;
+        }
+    }
+
+    constexpr static int deserializeThresholdLevel(uint8_t data)
+    {
+        switch (data) {
+        case 0: return 1;
+        case 1: return 3;
+        case 2: return 5;
+        case 3: return 7;
+        case 4: return 9;
+        default:
+            Q_ASSERT(false);
+            return 0;
+        }
+    }
+
+    constexpr static int8_t serializeThresholdLevel(int lvl)
+    {
+        switch (lvl) {
+        case 1: return 0;
+        case 3: return 1;
+        case 5: return 2;
+        case 7: return 3;
+        case 9: return 4;
+        default:
+            Q_ASSERT(false);
+            return 0;
+        }
+    }
+};
+
+template <>
+struct ModuleInfo<DM500M>
+{
+    constexpr static int typeIndex()
+    {
+        return 2;
+    }
+
+    constexpr static KiloHertz minFrequency()
+    {
+        return 48_MHz;
+    }
+
+    constexpr static KiloHertz maxFrequency()
+    {
+        return 862_MHz;
+    }
+
+    template<typename T, typename Q>
+    constexpr static bool validateFrequency(Frequency<T, Q> frequency)
+    {
+        return minFrequency() <= frequency && frequency <= maxFrequency();
+    }
+
+    constexpr static bool validateThresholdLevel(int value)
+    {
+        return 0 <= value && value <= 9;
+    }
+
+    constexpr static bool signalLevelSupport()
+    {
+        return true;
+    }
+
+    constexpr static int8_t signalCorrection()
+    {
+        return 6;
+    }
+
+    constexpr static int8_t signalMinLevel()
+    {
+        return 30;
+    }
+
+    constexpr static int8_t signalDivider()
+    {
+        return 10;
+    }
+
+    constexpr static int deserializeScaleLevel(int8_t data)
+    {
+        return (data - signalMinLevel()) / signalDivider();
+    }
+
+    constexpr static int deserializeThresholdLevel(int8_t data)
+    {
+        return deserializeScaleLevel(data);
+    }
+
+    constexpr static int deserializeSignalLevel(int8_t data)
+    {
+        return data + signalCorrection();
+    }
+
+    constexpr static int8_t serializeThresholdLevel(int lvl)
+    {
+        return static_cast<int8_t>(lvl * signalDivider() + signalMinLevel());
+    }
+
+    constexpr static int convertScaleLevelToSignalLevel(int scale)
+    {
+        return scale * signalDivider() + signalMinLevel() + signalCorrection();
+    }
+};
+
+template <>
+struct ModuleInfo<DM500FM>
+{
+    constexpr static int typeIndex()
+    {
+        return 3;
+    }
+
+    constexpr static KiloHertz minFrequency()
+    {
+        return 62_MHz;
+    }
+
+    constexpr static KiloHertz maxFrequency()
+    {
+        return 108_MHz;
+    }
+
+    template<typename T, typename Q>
+    constexpr static bool validateFrequency(Frequency<T, Q> frequency)
+    {
+        return (62_MHz <= frequency && frequency <= 74_MHz)
+            || (76_MHz <= frequency && frequency <= 108_MHz);
+    }
+
+    constexpr static bool validateThresholdLevel(int value)
+    {
+        return 0 <= value && value <= 9;
+    }
+
+    constexpr static bool signalLevelSupport()
+    {
+        return true;
+    }
+
+    constexpr static int8_t signalCorrection()
+    {
+        return -10;
+    }
+
+    constexpr static int8_t signalMinLevel()
+    {
+        return 25;
+    }
+
+    constexpr static int8_t signalDivider()
+    {
+        return 8;
+    }
+
+    constexpr static int deserializeScaleLevel(int8_t data)
+    {
+        return (data - signalMinLevel()) / signalDivider();
+    }
+
+    constexpr static int deserializeThresholdLevel(int8_t data)
+    {
+        return deserializeScaleLevel(data);
+    }
+
+    constexpr static int deserializeSignalLevel(int8_t data)
+    {
+        return data + signalCorrection();
+    }
+
+    constexpr static int8_t serializeThresholdLevel(int lvl)
+    {
+        return static_cast<int8_t>(lvl * signalDivider() + signalMinLevel());
+    }
+
+    constexpr static int convertScaleLevelToSignalLevel(int scale)
+    {
+        return scale * signalDivider() + signalMinLevel() + signalCorrection();
+    }
+
+    constexpr static int minVolume()
+    {
+        return 1;
+    }
+
+    constexpr static int maxVolume()
+    {
+        return 15;
+    }
+
+    constexpr static bool validateVolume(int value)
+    {
+        return minVolume() <= value && value <= maxVolume();
+    }
+};
 
 #pragma pack(pop)

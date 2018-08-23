@@ -35,3 +35,11 @@ private:
     void writeModuleData(QXmlStreamWriter &xml, const QVariantMap &data);
     void readModuleData(QXmlStreamReader &xml, QVariantMap &data);
 };
+
+class CsvSerializer : public Interfaces::SettingsSerializer
+{
+public:
+    QString fileExtension() const override;
+    void serialize(QIODevice &out, Device &device) override;
+    bool deserialize(QIODevice &in, Device &device, QString &errors) override;
+};

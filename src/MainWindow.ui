@@ -127,6 +127,9 @@
      <property name="tabPosition">
       <enum>QTabWidget::West</enum>
      </property>
+     <property name="usesScrollButtons">
+      <bool>false</bool>
+     </property>
     </widget>
    </item>
    <item>

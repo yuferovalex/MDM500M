@@ -102,11 +102,11 @@ public:
 
 private:
     static constexpr int     kMaxAttemptsCount    = 2;
-    static constexpr size_t  kMinPackageSize      = 4;
+    static constexpr int     kMinPackageSize      = 4;
     static constexpr uint8_t kMinValueOfSizeField = 2;
     static constexpr uint8_t kPackageMarker       = 0xA5;
     static constexpr std::chrono::milliseconds kWriteTimeout { 500 };
-    static constexpr std::chrono::milliseconds kDefaultReadTimeout { 1000 };
+    static constexpr std::chrono::milliseconds kDefaultReadTimeout { 2000 };
 
     bool performDefaultDialog(Command cmd, const void *writeBuffer, int writeBufferSize,
                               void *readBuffer, int readBufferSize, std::chrono::milliseconds timeout);
@@ -150,15 +150,16 @@ inline uint8_t getch(QIODevice &device)
 template <typename Reader>
 bool Protocol::wait(Reader &&reader, QDeadlineTimer timer)
 {
-    while (!timer.hasExpired()) {
+    do {
         auto bytesAvailable = m_port.bytesAvailable();
-        if (bytesAvailable >= kMinValueOfSizeField) {
-            if (reader.isDataEnough(bytesAvailable - kMinValueOfSizeField)) {
+        if (bytesAvailable >= kMinPackageSize) {
+            if (reader.isDataEnough(bytesAvailable - kMinPackageSize)) {
                 return true;
             }
         }
-        m_port.waitForReadyRead(timer.remainingTime());
+        m_port.waitForReadyRead(static_cast<int>(timer.remainingTime()));
     }
+    while (!timer.hasExpired());
     return false;
 }
 
@@ -166,14 +167,12 @@ template <typename Reader>
 bool Protocol::read(Reader &&reader, std::chrono::milliseconds timeout)
 {
     QDeadlineTimer timer(timeout);
-
     do {
         if (!wait(reader, timer)) {
             return false;
         }
     }
     while (!readPackage(reader));
-
     return true;
 }
 
@@ -245,19 +244,19 @@ bool Protocol::get(Command request, Reader &&reader, std::chrono::duration<T, Q>
 template <typename Params, typename Reader>
 bool Protocol::set(Command cmd, Params &&data, Reader &&reader, ReaderTag)
 {
-    return set(cmd, &data, sizeof(Params), reader, kDefaultReadTimeout, ReaderTag());
+    return set(cmd, &data, sizeof(Params), std::forward<Reader>(reader), kDefaultReadTimeout, ReaderTag());
 }
 
 template <typename Params, typename Reader, typename T, typename Q>
 bool Protocol::set(Command cmd, Params &&data, Reader &&reader, std::chrono::duration<T, Q> timeout, ReaderTag)
 {
-    return set(cmd, &data, sizeof(Params), reader, timeout, ReaderTag());
+    return set(cmd, &data, sizeof(Params), std::forward<Reader>(reader), timeout, ReaderTag());
 }
 
 template <typename Reader>
 bool Protocol::set(Command cmd, const void *data, int size, Reader &&reader, ReaderTag)
 {
-    return set(cmd, data, size, reader, kDefaultReadTimeout, ReaderTag());
+    return set(cmd, data, size, std::forward<Reader>(reader), kDefaultReadTimeout, ReaderTag());
 }
 
 template <typename Reader, typename T, typename Q>
@@ -267,5 +266,5 @@ bool Protocol::set(Command cmd, const void *data, int size, Reader &&reader,
     using std::chrono::duration_cast;
     using std::chrono::milliseconds;
     return write(cmd, data, size)
-        && read(std::forward(reader), duration_cast<milliseconds>(timeout));
+        && read(std::forward<Reader>(reader), duration_cast<milliseconds>(timeout));
 }

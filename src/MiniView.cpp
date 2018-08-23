@@ -12,9 +12,12 @@ MiniView::MiniView(Device *device)
     Q_ASSERT(device != nullptr);
 
     ui->setupUi(this);
-    adjustSize();
+    bool isSignalLevelsSupported = !m_device->isMDM500();
+    ui->dbmvHeader->setVisible(isSignalLevelsSupported);
     for (int slot = 0; slot < MDM500M::kSlotCount; ++slot) {
         auto ctrl  = findChild<QAbstractButton *>(QString("control_%1").arg(slot));
+        auto dbmv  = findChild<QLabel *>(QString("dbmv_%1").arg(slot));
+        dbmv->setVisible(isSignalLevelsSupported);
         m_group->addButton(ctrl, slot);
         onModuleReplaced(m_device->module(slot));
     }
@@ -25,6 +28,7 @@ MiniView::MiniView(Device *device)
     connect(m_device, &Device::controlModuleChanged, this, &MiniView::onControlModuleChanged);
     connect(m_device, &Device::errorsChanged, this, &MiniView::onErrorsChanged);
     connect(m_group, SIGNAL(buttonClicked(int)), this, SLOT(onCurrentButtonChanged(int)));
+    adjustSize();
 }
 
 void MiniView::onCurrentButtonChanged(int id)

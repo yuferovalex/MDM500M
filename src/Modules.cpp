@@ -61,7 +61,7 @@ bool Module::setFrequency(KiloHertz f)
     }
     m_data.config.modules[m_slot].frequency = static_cast<uint32_t>(f.count());
     auto channel = m_chTable->channel(f);
-    if (m_channel == channel) {
+    if (m_channel != channel) {
         m_channel = channel;
         emit channelChanged(m_channel);
     }
@@ -122,11 +122,6 @@ int Module::thresholdLevel() const
     return thresholdLevelsImpl(m_data.thresholdLevels[m_slot]);
 }
 
-int Module::convertScaleLevelToSignalLevel(int value) const
-{
-    return signalLevelImpl(static_cast<int8_t>(value * m_signalDivider + m_signalMinLevel));
-}
-
 void Module::setThresholdLevel(int lvl)
 {
     qDebug("Module::setThresholdLevel()");
@@ -142,26 +137,6 @@ void Module::setThresholdLevel(int lvl)
 void Module::accept(Interfaces::ModuleVisitor &visitor)
 {
     visitor.visit(*this);
-}
-
-int Module::scaleLevelImpl(int8_t data) const
-{
-    return qBound<int>(0, (data - m_signalMinLevel) / m_signalDivider, 9);
-}
-
-int Module::signalLevelImpl(int8_t data) const
-{
-    return data + m_signalCorrection;
-}
-
-int Module::thresholdLevelsImpl(int8_t data) const
-{
-    return qBound<int>(1, scaleLevelImpl(data), 9);
-}
-
-int8_t Module::convertThresholdLevels(int lvl) const
-{
-    return static_cast<int8_t>(lvl * m_signalDivider + m_signalMinLevel);
 }
 
 bool Module::validateFrequency(KiloHertz frequency) const
@@ -188,6 +163,36 @@ void EmptyModule::accept(Interfaces::ModuleVisitor &visitor)
     visitor.visit(*this);
 }
 
+int EmptyModule::convertScaleLevelToSignalLevel(int) const
+{
+    return 0;
+}
+
+int EmptyModule::scaleLevelImpl(int8_t) const
+{
+    return 0;
+}
+
+int EmptyModule::signalLevelImpl(int8_t) const
+{
+    return 0;
+}
+
+int EmptyModule::thresholdLevelsImpl(int8_t) const
+{
+    return 0;
+}
+
+int8_t EmptyModule::convertThresholdLevels(int) const
+{
+    return 0;
+}
+
+bool EmptyModule::validateFrequency(KiloHertz) const
+{
+    return false;
+}
+
 UnknownModule::UnknownModule(int slot, DeviceData &data, std::shared_ptr<Interfaces::ChannelTable> chTable)
     : Module(slot, data, chTable)
 {
@@ -201,16 +206,56 @@ void UnknownModule::accept(Interfaces::ModuleVisitor &visitor)
     visitor.visit(*this);
 }
 
+int UnknownModule::convertScaleLevelToSignalLevel(int) const
+{
+    return 0;
+}
+
+int UnknownModule::scaleLevelImpl(int8_t ) const
+{
+    return 0;
+}
+
+int UnknownModule::signalLevelImpl(int8_t) const
+{
+    return 0;
+}
+
+int UnknownModule::thresholdLevelsImpl(int8_t) const
+{
+    return 0;
+}
+
+int8_t UnknownModule::convertThresholdLevels(int) const
+{
+    return 0;
+}
+
+bool UnknownModule::validateFrequency(KiloHertz) const
+{
+    return false;
+}
+
 DM500::DM500(int slot, DeviceData &data, std::shared_ptr<Interfaces::ChannelTable> chTable)
     : Module(slot, data, chTable)
 {
     m_type = tr("ДМ-500");
-    m_isSupportSignalLevel = false;
+    m_isSupportSignalLevel = ModuleInfo<DM500>::signalLevelSupport();
+}
+
+bool DM500::isThresholdLevelsSupported() const
+{
+    return m_data.type == DeviceType::MDM500M;
 }
 
 void DM500::accept(Interfaces::ModuleVisitor &visitor)
 {
     visitor.visit(*this);
+}
+
+int DM500::convertScaleLevelToSignalLevel(int) const
+{
+    return 0;
 }
 
 int DM500::scaleLevelImpl(int8_t data) const
@@ -241,31 +286,19 @@ int DM500::thresholdLevelsImpl(int8_t data) const
 
 int8_t DM500::convertThresholdLevels(int lvl) const
 {
-    switch (lvl) {
-    case 1: return 0;
-    case 3: return 1;
-    case 5: return 2;
-    case 7: return 3;
-    case 9: return 4;
-    default:
-        Q_ASSERT(false);
-        return 0;
-    }
+    return ModuleInfo<DM500>::serializeThresholdLevel(lvl);
 }
 
 bool DM500::validateFrequency(KiloHertz f) const
 {
-    return 48_MHz <= f && f <= 862_MHz;
+    return ModuleInfo<DM500>::validateFrequency(f);
 }
 
 DM500M::DM500M(int slot, DeviceData &data, std::shared_ptr<Interfaces::ChannelTable> chTable)
     : Module(slot, data, chTable)
 {
     m_type = tr("ДМ-500М");
-    m_isSupportSignalLevel = true;
-    m_signalCorrection =  6;
-    m_signalMinLevel   = 30;
-    m_signalDivider    = 10;
+    m_isSupportSignalLevel = ModuleInfo<DM500M>::signalLevelSupport();
 }
 
 DM500M::VideoStandart DM500M::videoStandart() const
@@ -276,6 +309,11 @@ DM500M::VideoStandart DM500M::videoStandart() const
 DM500M::SoundStandart DM500M::soundStandart() const
 {
     return SoundStandart(m_data.config.modules[slot()].soundStandart);
+}
+
+int DM500M::convertScaleLevelToSignalLevel(int value) const
+{
+    return ModuleInfo<DM500M>::convertScaleLevelToSignalLevel(value);
 }
 
 void DM500M::accept(Interfaces::ModuleVisitor &visitor)
@@ -303,17 +341,34 @@ void DM500M::setVideoStandart(DM500M::VideoStandart vs)
 
 bool DM500M::validateFrequency(KiloHertz f) const
 {
-    return 48_MHz <= f && f <= 862_MHz;
+    return ModuleInfo<DM500M>::validateFrequency(f);
+}
+
+int DM500M::scaleLevelImpl(int8_t data) const
+{
+    return ModuleInfo<DM500M>::deserializeScaleLevel(data);
+}
+
+int DM500M::signalLevelImpl(int8_t data) const
+{
+    return ModuleInfo<DM500M>::deserializeSignalLevel(data);
+}
+
+int DM500M::thresholdLevelsImpl(int8_t data) const
+{
+    return ModuleInfo<DM500M>::deserializeThresholdLevel(data);
+}
+
+int8_t DM500M::convertThresholdLevels(int lvl) const
+{
+    return ModuleInfo<DM500M>::serializeThresholdLevel(lvl);
 }
 
 DM500FM::DM500FM(int slot, DeviceData &data, std::shared_ptr<Interfaces::ChannelTable> chTable)
     : Module(slot, data, chTable)
 {
     m_type = tr("ДМ-500FM");
-    m_isSupportSignalLevel = true;
-    m_signalCorrection = -10;
-    m_signalMinLevel   =  25;
-    m_signalDivider    =   8;
+    m_isSupportSignalLevel = ModuleInfo<DM500FM>::signalLevelSupport();
 }
 
 bool DM500FM::isRds() const
@@ -348,7 +403,32 @@ void DM500FM::accept(Interfaces::ModuleVisitor &visitor)
 
 bool DM500FM::validateFrequency(KiloHertz f) const
 {
-    return (62_MHz <= f && f <= 74_MHz) || (76_MHz <= f && f <= 108_MHz);
+    return ModuleInfo<DM500FM>::validateFrequency(f);
+}
+
+int DM500FM::convertScaleLevelToSignalLevel(int value) const
+{
+    return ModuleInfo<DM500FM>::convertScaleLevelToSignalLevel(value);
+}
+
+int DM500FM::scaleLevelImpl(int8_t data) const
+{
+    return ModuleInfo<DM500FM>::deserializeScaleLevel(data);
+}
+
+int DM500FM::signalLevelImpl(int8_t data) const
+{
+    return ModuleInfo<DM500FM>::deserializeSignalLevel(data);
+}
+
+int DM500FM::thresholdLevelsImpl(int8_t data) const
+{
+    return ModuleInfo<DM500FM>::deserializeThresholdLevel(data);
+}
+
+int8_t DM500FM::convertThresholdLevels(int lvl) const
+{
+    return ModuleInfo<DM500FM>::serializeThresholdLevel(lvl);
 }
 
 void DM500FM::setModuleStates(MDM500M::ModuleStates::States states)
@@ -367,22 +447,32 @@ void DM500FM::setModuleStates(MDM500M::ModuleStates::States states)
 bool ModuleFabric::mustBeReplaced(Module *module, int typeIndex) const
 {
     switch (typeIndex) {
-    case Empty   : return typeid(*module) != typeid(class EmptyModule &);
-    case DM500   : return typeid(*module) != typeid(class DM500 &);
-    case DM500M  : return typeid(*module) != typeid(class DM500M &);
-    case DM500FM : return typeid(*module) != typeid(class DM500FM &);
-    default      : return typeid(*module) != typeid(class UnknownModule &);
+    case ModuleInfo<EmptyModule>::typeIndex():
+        return typeid(*module) != typeid(EmptyModule &);
+    case ModuleInfo<DM500>::typeIndex():
+        return typeid(*module) != typeid(DM500 &);
+    case ModuleInfo<DM500M>::typeIndex():
+        return typeid(*module) != typeid(DM500M &);
+    case ModuleInfo<DM500FM>::typeIndex():
+        return typeid(*module) != typeid(DM500FM &);
+    default:
+        return typeid(*module) != typeid(UnknownModule &);
     }
 }
 
 Module *ModuleFabric::createModule(int typeIndex, int slot, DeviceData &data)
 {
     switch (typeIndex) {
-    case Empty   : return new class EmptyModule(slot, data, NullChannelTable::globalInstance());
-    case DM500   : return new class DM500(slot, data, TvChannelTable::globalInstance());
-    case DM500M  : return new class DM500M(slot, data, TvChannelTable::globalInstance());
-    case DM500FM : return new class DM500FM(slot, data, NullChannelTable::globalInstance());
-    default      : return new class UnknownModule(slot, data, NullChannelTable::globalInstance());
+    case ModuleInfo<EmptyModule>::typeIndex():
+        return new EmptyModule(slot, data, NullChannelTable::globalInstance());
+    case ModuleInfo<DM500>::typeIndex():
+        return new DM500(slot, data, TvChannelTable::globalInstance());
+    case ModuleInfo<DM500M>::typeIndex():
+        return new DM500M(slot, data, TvChannelTable::globalInstance());
+    case ModuleInfo<DM500FM>::typeIndex():
+        return new DM500FM(slot, data, NullChannelTable::globalInstance());
+    default:
+        return new UnknownModule(slot, data, NullChannelTable::globalInstance());
     }
 }
 

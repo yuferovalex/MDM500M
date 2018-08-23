@@ -99,7 +99,7 @@ public:
     bool isSupportSignalLevel() const;
     int signalLevel() const;
     int thresholdLevel() const;
-    int convertScaleLevelToSignalLevel(int value) const;
+    virtual int convertScaleLevelToSignalLevel(int value) const = 0;
     void setThresholdLevel(int lvl);
     virtual void accept(Interfaces::ModuleVisitor &visitor);
 
@@ -112,18 +112,15 @@ signals:
     void errorsChanged();
 
 protected:
-    virtual int scaleLevelImpl(int8_t data) const;
-    virtual int signalLevelImpl(int8_t data) const;
-    virtual int thresholdLevelsImpl(int8_t data) const;
-    virtual int8_t convertThresholdLevels(int lvl) const;
-    virtual bool validateFrequency(KiloHertz frequency) const;
+    virtual int scaleLevelImpl(int8_t data) const = 0;
+    virtual int signalLevelImpl(int8_t data) const = 0;
+    virtual int thresholdLevelsImpl(int8_t data) const = 0;
+    virtual int8_t convertThresholdLevels(int lvl) const = 0;
+    virtual bool validateFrequency(KiloHertz frequency) const = 0;
     virtual void setModuleStates(MDM500M::ModuleStates::States states);
 
     QString m_type;
     DeviceData &m_data;
-    int8_t m_signalDivider = 1;
-    int8_t m_signalCorrection = 0;
-    int8_t m_signalMinLevel = 0;
     bool m_isSupportSignalLevel = true;
     bool m_isEmpty = false;
 
@@ -142,6 +139,14 @@ class EmptyModule : public Module
 public:
     EmptyModule(int slot, DeviceData &data, std::shared_ptr<Interfaces::ChannelTable> chTable);
     void accept(Interfaces::ModuleVisitor &visitor) override;
+    int convertScaleLevelToSignalLevel(int value) const override;
+
+protected:
+    int scaleLevelImpl(int8_t data) const override;
+    int signalLevelImpl(int8_t data) const override;
+    int thresholdLevelsImpl(int8_t data) const override;
+    int8_t convertThresholdLevels(int lvl) const override;
+    bool validateFrequency(KiloHertz frequency) const override;
 };
 
 class UnknownModule : public Module
@@ -151,6 +156,14 @@ class UnknownModule : public Module
 public:
     UnknownModule(int slot, DeviceData &data, std::shared_ptr<Interfaces::ChannelTable> chTable);
     void accept(Interfaces::ModuleVisitor &visitor) override;
+    int convertScaleLevelToSignalLevel(int value) const override;
+
+protected:
+    int scaleLevelImpl(int8_t data) const override;
+    int signalLevelImpl(int8_t data) const override;
+    int thresholdLevelsImpl(int8_t data) const override;
+    int8_t convertThresholdLevels(int lvl) const override;
+    bool validateFrequency(KiloHertz frequency) const override;
 };
 
 class DM500 : public Module
@@ -159,7 +172,9 @@ class DM500 : public Module
 
 public:
     DM500(int slot, DeviceData &data, std::shared_ptr<Interfaces::ChannelTable> chTable);
+    bool isThresholdLevelsSupported() const;
     void accept(Interfaces::ModuleVisitor &visitor) override;
+    int convertScaleLevelToSignalLevel(int value) const override;
 
 protected:
     int scaleLevelImpl(int8_t data) const override;
@@ -197,12 +212,17 @@ signals:
     void soundStandartChanged(SoundStandart);
 
 public:
+    int convertScaleLevelToSignalLevel(int value) const override;
     void accept(Interfaces::ModuleVisitor &visitor) override;
     void setSoundStandart(SoundStandart soundStandart);
     void setVideoStandart(VideoStandart videoStandart);
 
 protected:
     bool validateFrequency(KiloHertz f) const override;
+    int scaleLevelImpl(int8_t data) const override;
+    int signalLevelImpl(int8_t data) const override;
+    int thresholdLevelsImpl(int8_t data) const override;
+    int8_t convertThresholdLevels(int lvl) const override;
 };
 
 class DM500FM : public Module
@@ -225,6 +245,16 @@ signals:
 protected:
     bool validateFrequency(KiloHertz f) const override;
     void setModuleStates(MDM500M::ModuleStates::States states) override;
+
+    // Module interface
+public:
+    int convertScaleLevelToSignalLevel(int value) const override;
+
+protected:
+    int scaleLevelImpl(int8_t data) const override;
+    int signalLevelImpl(int8_t data) const override;
+    int thresholdLevelsImpl(int8_t data) const override;
+    int8_t convertThresholdLevels(int lvl) const override;
 };
 
 class ModuleFabric : public Interfaces::ModuleFabric

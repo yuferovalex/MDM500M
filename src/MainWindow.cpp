@@ -34,14 +34,18 @@ void MainWindow::createBuilders()
 {
     SettingsViewBuilder builder;
 
+    builder.type = DeviceType::MDM500M;
     builder.moduleFabric = std::make_shared<ModuleFabric>();
     builder.moduleViewFabric = std::make_shared<ModuleViewFabric>();
     builder.nameRepo = std::make_shared<NameRepository>(new QFile("devices.xml"));
     builder.settingsSerializer = std::make_shared<XmlSerializer>();
     builder.transactionFabric = std::make_shared<MDM500M::TransactionFabric>();
-    builder.type = DeviceType::MDM500M;
+    m_builders[DeviceType::MDM500M] = builder;
 
-    m_builders[DeviceType::MDM500M] = std::move(builder);
+    builder.type = DeviceType::MDM500;
+    builder.settingsSerializer = std::make_shared<CsvSerializer>();
+    builder.transactionFabric = std::make_shared<MDM500::TransactionFabric>();
+    m_builders[DeviceType::MDM500] = builder;
 }
 
 void MainWindow::searchDevice()
@@ -54,7 +58,7 @@ void MainWindow::searchDevice()
         Q_ASSERT(m_builders.find(type) != m_builders.end());
 
         // Создание новой вкладки
-        auto &&builder = m_builders[type];
+        auto builder = m_builders[type];
         builder.invoker = std::move(m_invoker);
         auto settingsView = builder.build();
         auto miniView = new MiniView(settingsView->device());

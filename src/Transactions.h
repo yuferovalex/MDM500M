@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <QSerialPort>
 
@@ -140,7 +140,7 @@ public:
     Q_ENUM(DeviceType)
 
     SearchDevice();
-    void exec(QSerialPort &port, CancelToken isCanceled) override;
+    void exec(QSerialPort &port, CancelToken iscancelled) override;
 
 private:
     bool tryGetDeviceInfo(QSerialPort &port);
@@ -157,7 +157,7 @@ class GetAllDeviceInfo : public Interfaces::GetAllDeviceInfo
 
 public:
     GetAllDeviceInfo();
-    void exec(QSerialPort &port, CancelToken canceled) override;
+    void exec(QSerialPort &port, CancelToken cancelled) override;
 };
 
 class UpdateDeviceInfo : public Interfaces::UpdateDeviceInfo
@@ -166,7 +166,7 @@ class UpdateDeviceInfo : public Interfaces::UpdateDeviceInfo
 
 public:
     UpdateDeviceInfo();
-    void exec(QSerialPort &port, CancelToken canceled) override;
+    void exec(QSerialPort &port, CancelToken cancelled) override;
 };
 
 class SetControlModule : public Interfaces::SetControlModule
@@ -175,7 +175,7 @@ class SetControlModule : public Interfaces::SetControlModule
 
 public:
     SetControlModule(int slot);
-    void exec(QSerialPort &port, CancelToken canceled) override;
+    void exec(QSerialPort &port, CancelToken cancelled) override;
 
 private:
     uint8_t m_data;
@@ -187,7 +187,7 @@ class SetModuleConfig : public Interfaces::SetModuleConfig
 
 public:
     SetModuleConfig(int slot, ModuleConfig config);
-    void exec(QSerialPort &port, CancelToken canceled) override;
+    void exec(QSerialPort &port, CancelToken cancelled) override;
 
 private:
     ModuleConfigWithSlot m_data;
@@ -199,7 +199,7 @@ class SetThresholdLevels : public Interfaces::SetThresholdLevels
 
 public:
     SetThresholdLevels(SignalLevels lvls);
-    void exec(QSerialPort &port, CancelToken canceled) override;
+    void exec(QSerialPort &port, CancelToken cancelled) override;
 
 private:
     SignalLevels m_data;
@@ -211,7 +211,7 @@ class SaveConfigToEprom : public Interfaces::SaveConfigToEprom
 
 public:
     SaveConfigToEprom(const DeviceConfig &config);
-    void exec(QSerialPort &port, CancelToken canceled) override;
+    void exec(QSerialPort &port, CancelToken cancelled) override;
 
 private:
     DeviceConfig m_config;
@@ -223,7 +223,7 @@ class UpdateFirmware : public Interfaces::UpdateFirmware
 
 public:
     UpdateFirmware(Firmware firmware);
-    void exec(QSerialPort &port, CancelToken canceled) override;
+    void exec(QSerialPort &port, CancelToken cancelled) override;
 
 private:
     bool flash(UpdaterProtocol &boot);
@@ -248,5 +248,48 @@ public:
 } // namespace MDM500M
 
 namespace MDM500 {
+
+class GetAllDeviceInfo : public Interfaces::GetAllDeviceInfo
+{
+    Q_OBJECT
+
+public:
+    GetAllDeviceInfo();
+    void exec(QSerialPort &port, CancelToken cancelled) override;
+};
+
+class UpdateDeviceInfo : public Interfaces::UpdateDeviceInfo
+{
+    Q_OBJECT
+
+public:
+    UpdateDeviceInfo();
+    void exec(QSerialPort &port, CancelToken cancelled) override;
+};
+
+class SaveConfigToEprom : public Interfaces::SaveConfigToEprom
+{
+    Q_OBJECT
+
+public:
+    SaveConfigToEprom(const MDM500M::DeviceConfig &config);
+    void exec(QSerialPort &port, CancelToken cancelled) override;
+
+private:
+    DeviceConfig m_config;
+};
+
+class TransactionFabric : public Interfaces::TransactionFabric
+{
+public:
+    GetAllDeviceInfo *getAllDeviceInfo() override;
+    UpdateDeviceInfo *updateDeviceInfo() override;
+    SaveConfigToEprom *saveConfigToEprom(const MDM500M::DeviceConfig &) override;
+
+    Interfaces::SetControlModule *setControlModule(int slot) override;
+    Interfaces::SetModuleConfig *setModuleConfig(int slot, MDM500M::ModuleConfig config) override;
+    Interfaces::SetThresholdLevels *setThresholdLevels(const SignalLevels &) override;
+    Interfaces::UpdateFirmware *updateFirmware(Firmware firmware) override;
+};
 
 } // namespace MDM500

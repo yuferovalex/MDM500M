@@ -39,7 +39,8 @@ RC_FILE = app_resource.rc
     }
 }
 
-OTHER_FILES = app_resource.rc
+OTHER_FILES = \
+    app_resource.rc
 
 HEADERS += \
     Types.h \

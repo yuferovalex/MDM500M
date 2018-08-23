@@ -15,7 +15,7 @@ struct DeviceData
     MDM500M::SignalLevels signalLevels {};
     MDM500M::SignalLevels thresholdLevels {};
     MDM500M::DeviceInfo   info {};
-    DeviceType            type = DeviceType::MDM500M;
+    DeviceType            type;
 };
 
 namespace Interfaces {
@@ -23,15 +23,6 @@ namespace Interfaces {
 class ModuleFabric
 {
 public:
-    enum ModuleTypeIndex
-    {
-        Empty = 0,
-        DM500 = 1,
-        DM500M = 2,
-        DM500FM = 3,
-        Unknown = 15,
-    };
-
     virtual ~ModuleFabric() = default;
     virtual bool mustBeReplaced(Module *module, int typeIndex) const = 0;
     virtual Module *createModule(int typeIndex, int slot, DeviceData &data) = 0;
@@ -44,8 +35,9 @@ class Device : public QObject
     Q_OBJECT
 
 public:
-    Device(std::shared_ptr<Interfaces::ModuleFabric> moduleFabric, DeviceType type, QObject *parent = nullptr);
+    Device(std::shared_ptr<Interfaces::ModuleFabric> moduleFabric, DeviceType type);
     ~Device();
+    bool isMDM500() const;
     QString type() const;
     bool isError() const;
     Module *module(int slot) const;
@@ -57,11 +49,11 @@ public:
     SoftwareVersion softwareVersion() const;
     void setName(QString name);
     void setControlModule(int slot);
-    void setInfo(MDM500M::DeviceInfo info);
+    void setInfo(const MDM500M::DeviceInfo &info);
     void setConfig(const MDM500M::DeviceConfig &config);
     void setErrors(MDM500M::DeviceErrors errs);
-    void setThresholdLevels(MDM500M::SignalLevels lvls);
-    void setSignalLevels(MDM500M::SignalLevels lvls);
+    void setThresholdLevels(const MDM500M::SignalLevels &lvls);
+    void setSignalLevels(const MDM500M::SignalLevels &lvls);
     void setModuleStates(MDM500M::ModuleStates states);
     void resetChangedError();
 
@@ -74,6 +66,7 @@ signals:
 
 private:
     void updateErrorStatus();
+    void checkLowLevels();
 
     DeviceData m_data;
     std::array<Module *, MDM500M::kSlotCount> m_modules;

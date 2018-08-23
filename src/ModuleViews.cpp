@@ -168,6 +168,11 @@ DM500View::DM500View(DM500 &module, QWidget *parent)
     , m_module(module)
 {
     ui->setupUi(this);
+    bool isThresholdLevelsSupported = module.isThresholdLevelsSupported();
+    ui->thresholdLevel->setVisible(isThresholdLevelsSupported);
+    ui->moduleThresholdLevelLabel->setVisible(isThresholdLevelsSupported);
+    ui->frequency->setMinimum(MegaHertzReal(ModuleInfo<DM500>::minFrequency()).count());
+    ui->frequency->setMaximum(MegaHertzReal(ModuleInfo<DM500>::maxFrequency()).count());
     for (int scaleLevel = 1; scaleLevel <= 9; scaleLevel += 2) {
         ui->thresholdLevel->addItem(QString::number(scaleLevel), scaleLevel);
     }
@@ -180,6 +185,8 @@ DM500MView::DM500MView(DM500M &module, QWidget *parent)
     , m_module(module)
 {
     ui->setupUi(this);
+    ui->frequency->setMinimum(MegaHertzReal(ModuleInfo<DM500M>::minFrequency()).count());
+    ui->frequency->setMaximum(MegaHertzReal(ModuleInfo<DM500M>::maxFrequency()).count());
     ModuleView::setupThresholdLevels();
     ModuleView::setup();
     ui->soundStandart->setCurrentIndex(m_module.soundStandart() == DM500M::NICAM ? 0 : 1);
@@ -204,9 +211,13 @@ DM500FMView::DM500FMView(DM500FM &module, QWidget *parent)
     , m_module(module)
 {
     ui->setupUi(this);
+    ui->frequency->setMinimum(MegaHertzReal(ModuleInfo<DM500FM>::minFrequency()).count());
+    ui->frequency->setMaximum(MegaHertzReal(ModuleInfo<DM500FM>::maxFrequency()).count());
     ModuleView::setupThresholdLevels();
     ModuleView::setup();
     // Volume
+    ui->volume->setMinimum(ModuleInfo<DM500FM>::minVolume());
+    ui->volume->setMaximum(ModuleInfo<DM500FM>::maxVolume());
     ui->volume->setValue(m_module.volume());
     connect(ui->volume, &QSpinBox::editingFinished, this, &DM500FMView::onVolumeEditingFinished);
     // RDS

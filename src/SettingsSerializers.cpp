@@ -208,14 +208,15 @@ void Set::setParam(QString key, int slot, Setter &&setter)
     });
 
 #define CHECKED_SET_FREQUENCY(check)                                                \
-    setParam<double>("Frequency", module.slot(), [&](double value) {                \
+    setParam<double>("Frequency", module.slot(), [&](double v) {                    \
+        auto value = MegaHertzReal(v);                                              \
         if (!(check)) {                                                             \
             stream << QObject::tr("Модуль %1: неверное значение параметра \"%2\".") \
                          .arg(module.slot()).arg("Frequency")                       \
             << endl;                                                                \
             return ;                                                                \
         }                                                                           \
-        module.setFrequency(MegaHertzReal(value));                                  \
+        module.setFrequency(value);                                                 \
     });
 
 void Set::visit(Module &module)
@@ -227,22 +228,16 @@ void Set::visit(Module &module)
 void Set::visit(DM500 &module)
 {
     CHECK_TYPE();
-    CHECKED_SET_FREQUENCY(48 <= value && value <= 862);
-    auto check = [](int value) {
-        switch (value) {
-        case 1: case 3: case 5: case 7: case 9: return true;
-        default: return false;
-        }
-    };
-    CHECKED_SET_PARAM(int, ThresholdLevel, check(value));
+    CHECKED_SET_FREQUENCY(ModuleInfo<DM500>::validateFrequency(value));
+    CHECKED_SET_PARAM(int, ThresholdLevel, ModuleInfo<DM500>::validateThresholdLevel(value));
     visit(static_cast<Module &>(module));
 }
 
 void Set::visit(DM500M &module)
 {
     CHECK_TYPE();
-    CHECKED_SET_FREQUENCY(48 <= value && value <= 862);
-    CHECKED_SET_PARAM(int, ThresholdLevel, 1 <= value && value <= 9);
+    CHECKED_SET_FREQUENCY(ModuleInfo<DM500M>::validateFrequency(value));
+    CHECKED_SET_PARAM(int, ThresholdLevel, ModuleInfo<DM500M>::validateThresholdLevel(value));
     SET_PARAM(DM500M::SoundStandart, SoundStandart);
     SET_PARAM(DM500M::VideoStandart, VideoStandart);
     visit(static_cast<Module &>(module));
@@ -251,9 +246,9 @@ void Set::visit(DM500M &module)
 void Set::visit(DM500FM &module)
 {
     CHECK_TYPE();
-    CHECKED_SET_FREQUENCY((62 <= value && value <= 74) || (76 <= value && value <= 108));
-    CHECKED_SET_PARAM(int, ThresholdLevel, 1 <= value && value <= 9);
-    CHECKED_SET_PARAM(int, Volume, 1 <= value && value <= 15);
+    CHECKED_SET_FREQUENCY(ModuleInfo<DM500FM>::validateFrequency(value));
+    CHECKED_SET_PARAM(int, ThresholdLevel, ModuleInfo<DM500FM>::validateThresholdLevel(value));
+    CHECKED_SET_PARAM(int, Volume, ModuleInfo<DM500FM>::validateVolume(value));
     visit(static_cast<Module &>(module));
 }
 
@@ -267,4 +262,75 @@ void Set::visit(UnknownModule &module)
 {
     if (data.isEmpty()) return;
     CHECK_TYPE();
+}
+
+QString CsvSerializer::fileExtension() const
+{
+    return "CSV (*.csv)";
+}
+
+void CsvSerializer::serialize(QIODevice &out, Device &device)
+{
+    QTextStream text(&out);
+
+    for (int slot = 0; slot < kSlotCount; ++slot) {
+        auto &module = *device.module(slot);
+        text << QString("%1;%2;\n")
+                .arg(MegaHertzReal(module.frequency()).count(), 0, 'f', 2)
+                .arg(module.isDiagnosticEnabled());
+    }
+    text << "0;;" << endl;
+}
+
+bool CsvSerializer::deserialize(QIODevice &in, Device &device, QString &errors)
+{
+    struct Record
+    {
+        MegaHertzReal frequency;
+        bool diagnostic;
+    };
+    Record data[kSlotCount];
+
+    for (size_t lineNumber = 0; !in.atEnd() && lineNumber < kSlotCount; ++lineNumber) {
+        bool ok;
+        auto line = in.readLine().split(';');
+
+        if (line.size() < 2) {
+            errors = QObject::tr("нарушена разметка файла (строка %1)")
+                    .arg(lineNumber + 1);
+            return false;
+        }
+
+        auto frequency = MegaHertzReal(line[0].toDouble(&ok));
+        if (!ok) {
+            errors = QObject::tr("неверное значение частоты (1-ый столбец, %1 строка)")
+                    .arg(lineNumber + 1);
+            return false;
+        }
+        data[lineNumber].frequency = frequency;
+
+        bool diagnostic = line[1].toInt(&ok);
+        if (!ok) {
+            errors = QObject::tr("неверное значение диагностики (2-ой столбец, %1 строка)")
+                    .arg(lineNumber + 1);
+            return false;
+        }
+        data[lineNumber].diagnostic = diagnostic;
+    }
+
+    QTextStream e(&errors);
+    e << QObject::tr("Отчет о восстановлении настроек:") << endl;
+
+    for (int slot = 0; slot < kSlotCount; ++slot) {
+        auto &module = *device.module(slot);
+        if (!module.isEmpty()) {
+            if (!module.setFrequency(data[slot].frequency)) {
+                e << QObject::tr("Модуль %1: неверное значение частоты").arg(slot) << endl;
+            }
+            module.setDiagnostic(data[slot].diagnostic);
+            e << QObject::tr("Модуль %1: восстановление завершено").arg(slot) << endl;
+        }
+    }
+
+    return true;
 }

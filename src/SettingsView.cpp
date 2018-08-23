@@ -42,21 +42,11 @@ SettingsView::SettingsView(const SettingsViewBuilder &builder)
     ui->configTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     ui->configTable->verticalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 
-    // Выравниваем высоту надписей в таблице "Общая информация"
-    auto max = std::max({
-        ui->deviceNameLabel->height(),
-        ui->deviceSerialNumberLabel->height(),
-        ui->deviceSoftwareVersionLabel->height()
-    });
-    ui->deviceNameLabel->setMinimumHeight(max);
-    ui->deviceSerialNumberLabel->setMinimumHeight(max);
-    ui->deviceSoftwareVersionLabel->setMinimumHeight(max);
-
     // Настраиваем вид в зависимости от типа устройства
     bool show = builder.type == DeviceType::MDM500M;
     model->showSignalLevelColumn(show);
-    ui->updateFirmwareBtn->setVisible(show);
-    ui->updateFirmwareBtn->setVisible(show);
+    ui->deviceSoftwareVersionLabel->setVisible(show);
+    ui->softVerWrapper->setVisible(show);
 
     initModel();
 }
@@ -111,7 +101,7 @@ void SettingsView::initModel()
 
         // Заполняем модель данными
         m_device.setInfo(response.info);
-        m_device.setName(m_nameRepo->getName("МДМ-500М", m_device.serialNumber()));
+        m_device.setName(m_nameRepo->getName(m_device.type(), m_device.serialNumber()));
         m_device.setConfig(response.config);
         m_device.setThresholdLevels(response.thresholdLevels);
         m_device.setSignalLevels(response.signalLevels);
@@ -454,14 +444,17 @@ void SettingsView::on_configTable_clicked(const QModelIndex &index)
         ui->stackedWidget->setCurrentWidget(ui->mainPage);
         page->deleteLater();
     });
-    connect(page, &ModuleView::thresholdLevelChanged, this, [=]
-    {
-        setThresholdLevels();
-    });
-    connect(page, &ModuleView::settingsChanged, this, [=]
-    {
-        setModuleConfig(slot);
-    });
+    // Старое устройство не поддерживает временную передачу параметров%
+    if (!m_device.isMDM500()) {
+        connect(page, &ModuleView::thresholdLevelChanged, this, [=]
+        {
+            setThresholdLevels();
+        });
+        connect(page, &ModuleView::settingsChanged, this, [=]
+        {
+            setModuleConfig(slot);
+        });
+    }
     ui->stackedWidget->addWidget(page);
     ui->stackedWidget->setCurrentWidget(page);
 }
@@ -470,7 +463,7 @@ void SettingsView::on_name_editingFinished()
 {
     auto name = ui->name->text();
     m_device.setName(name);
-    m_nameRepo->setName("МДМ-500М", m_device.serialNumber(), name);
+    m_nameRepo->setName(m_device.type(), m_device.serialNumber(), name);
 }
 
 ConfigViewModel::ConfigViewModel(Device &device, QObject *parent)
