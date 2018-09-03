@@ -1,10 +1,26 @@
-#include <QFile>
+#include <QCoreApplication>
 #include <QDateTime>
+#include <QDir>
+#include <QFile>
 #include <QMessageBox>
 
 #include "Device.h"
 #include "Modules.h"
 #include "EventLog.h"
+
+struct CannotCreateLogsDir {};
+struct CannotCdToLogsDir {};
+struct CannotOpenFile
+{
+public:
+    CannotOpenFile(QString desc) noexcept
+        : m_what(desc)
+    {}
+    QString qWhat() const noexcept { return m_what; }
+
+private:
+    QString m_what;
+};
 
 EventLog::EventLog(Device &device, QObject *parent)
     : QObject(parent)
@@ -15,13 +31,15 @@ EventLog::EventLog(Device &device, QObject *parent)
 
 void EventLog::initialMessage(MDM500M::DeviceErrors log)
 {
-    open();
+    if (!open()) {
+        return ;
+    }
     out() << tr("Начало работы с устройством \"%1\"").arg(m_device.name()) << endl;
     out() << tr("Модель устройства:") << ' ' << m_device.type() << endl;
     out() << tr("Серийный номер:") << ' ' << m_device.serialNumber() << endl;
     // Старое устройство не поддерживает перепрошивку и журналирование ошибок
     if (!m_device.isMDM500()) {
-        out() << tr("Версия прошивки:") << m_device.softwareVersion().toString() << endl;
+        out() << tr("Версия прошивки:") << ' ' << m_device.softwareVersion().toString() << endl;
         if (log) {
             out() << tr("Со времени последнего подключения произошли следующие ошибки:") << endl;
             reportOldErrors(log);
@@ -82,6 +100,27 @@ void EventLog::reportCurrentErrors()
     }
 }
 
+QDir EventLog::getLogPath() const
+{
+    QDir path { QFileInfo(QCoreApplication::applicationFilePath()).path() };
+    if (!path.exists("logs")) {
+        if (!path.mkdir("logs")) {
+            throw CannotCreateLogsDir();
+        }
+    }
+    if (!path.cd("logs")) {
+        throw CannotCdToLogsDir();
+    }
+    return path;
+}
+
+QString EventLog::getFileName() const
+{
+    return QString("%1_%2.log")
+            .arg(m_device.serialNumber())
+            .arg(QDate::currentDate().toString("dd.MM.yyyy"));
+}
+
 void EventLog::onModuleErrorsChanged()
 {
     auto module = static_cast<Module *>(sender());
@@ -102,15 +141,38 @@ QString EventLog::date() const
     return QDateTime::currentDateTime().toString("dd.MM.yyyy hh:mm:ss");
 }
 
-void EventLog::open()
+bool EventLog::open()
 {
-    if (!m_file->isOpen()) {
-        m_file->setFileName(QString("%1_%2.log")
-                            .arg(m_device.serialNumber())
-                            .arg(QDate::currentDate().toString("dd.MM.yyyy")));
+    if (m_file->isOpen()) {
+        return true;
+    }
+    static const auto errorMsgTemplate = tr("Во время создания файла журнала "
+                                            "устройства произошла ошибка: %1.");
+
+    QString caption;
+    try {
+        QString fileName = getLogPath().absoluteFilePath(getFileName());
+        m_file->setFileName(fileName);
         if (!m_file->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append)) {
-            return;
+            throw CannotOpenFile(m_file->errorString());
         }
         m_out.setDevice(m_file);
+        return true;
     }
+    catch (CannotCreateLogsDir &) {
+        caption = errorMsgTemplate
+                .arg(tr("не удалось создать директорию \"logs\""));
+    }
+    catch (CannotCdToLogsDir &) {
+        caption = errorMsgTemplate
+                .arg(tr("не удалось открыть директорию \"logs\""));
+    }
+    catch (CannotOpenFile &e) {
+        caption = errorMsgTemplate.arg(e.qWhat());
+    }
+    QMessageBox::warning(
+                nullptr,
+                tr("Ошибка создания файла журнала"),
+                caption);
+    return false;
 }

@@ -79,6 +79,8 @@ private:
     void setModuleConfig(int slot);
     void setInterfaceEnabled(bool enabled);
     void updateMainInfo();
+    void onWrongParametersDetected();
+    void onDeviceCorruptionDetected();
 
     Device m_device;
     std::shared_ptr<Interfaces::ModuleViewFabric> m_moduleViewFabric;

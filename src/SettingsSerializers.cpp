@@ -78,7 +78,7 @@ void XmlSerializer::readModuleData(QXmlStreamReader &xml, QVariantMap &data)
     while (!xml.atEnd()) {
         auto token = xml.readNext();
         if (token == QXmlStreamReader::StartElement) {
-            data[xml.name().toString().toUpper()] = xml.readElementText();
+            data[xml.name().toString().toLower()] = xml.readElementText();
         }
         if (token == QXmlStreamReader::EndElement && xml.name() == "module") {
             break ;
@@ -97,10 +97,10 @@ bool XmlSerializer::deserialize(QIODevice &in, Device &device, QString &errors)
     while (!xml.atEnd() && !xml.hasError()) {
         auto token = xml.readNext();
         if (token == QXmlStreamReader::StartElement) {
-            if (xml.name() == "config") {
+            if (xml.name().toString().toLower() == QLatin1String("config")) {
                 isConfig = true;
             }
-            if (xml.name() == "module") {
+            if (xml.name().toString().toLower() == QLatin1String("module")) {
                 auto attributes = xml.attributes();
                 bool slotOk;
                 int slot = attributes.value("id").toInt(&slotOk);
@@ -113,7 +113,7 @@ bool XmlSerializer::deserialize(QIODevice &in, Device &device, QString &errors)
                     continue ;
                 }
 
-                data[slot]["TYPE"] = type;
+                data[slot]["type"] = type;
                 readModuleData(xml, data[slot]);
             }
         }
@@ -164,7 +164,7 @@ void Get::visit(DM500FM &module)
 template <typename T, typename Setter>
 void Set::setParam(QString key, int slot, Setter &&setter)
 {
-    auto iter = data.find(key.toUpper());
+    auto iter = data.find(key.toLower());
     if (iter == data.end()) {
         stream << QObject::tr("Модуль %1: параметр \"%2\" не найден.")
                              .arg(slot).arg(key)
@@ -183,7 +183,7 @@ void Set::setParam(QString key, int slot, Setter &&setter)
 
 #define CHECK_TYPE() \
     do { \
-        if (data["TYPE"].toString() != module.metaObject()->className()) { \
+        if (data["type"].toString() != module.metaObject()->className()) { \
             stream << QObject::tr("Модуль %1: типы модулей не совпадают") \
                       .arg(module.slot()) \
                    << endl; \
@@ -279,18 +279,38 @@ void CsvSerializer::serialize(QIODevice &out, Device &device)
                 .arg(MegaHertzReal(module.frequency()).count(), 0, 'f', 2)
                 .arg(module.isDiagnosticEnabled());
     }
-    text << "0;;" << endl;
+    text << device.controlModule() << ";;" << endl;
 }
 
 bool CsvSerializer::deserialize(QIODevice &in, Device &device, QString &errors)
 {
-    struct Record
-    {
-        MegaHertzReal frequency;
-        bool diagnostic;
-    };
     Record data[kSlotCount];
+    int control = 0;
 
+    bool read = readModuleParams(in, errors, data)
+             && readControlSlot(in, control, errors);
+    if (!read) {
+        return false;
+    }
+    QTextStream e(&errors);
+    e << QObject::tr("Отчет о восстановлении настроек:") << endl;
+
+    for (int slot = 0; slot < kSlotCount; ++slot) {
+        auto &module = *device.module(slot);
+        if (!module.isEmpty()) {
+            if (!module.setFrequency(data[slot].frequency)) {
+                e << QObject::tr("Модуль %1: неверное значение частоты").arg(slot) << endl;
+            }
+            module.setDiagnostic(data[slot].diagnostic);
+            e << QObject::tr("Модуль %1: восстановление завершено").arg(slot) << endl;
+        }
+    }
+    device.setControlModule(control);
+    return true;
+}
+
+bool CsvSerializer::readModuleParams(QIODevice &in, QString &errors, Record *data)
+{
     for (size_t lineNumber = 0; !in.atEnd() && lineNumber < kSlotCount; ++lineNumber) {
         bool ok;
         auto line = in.readLine().split(';');
@@ -317,20 +337,23 @@ bool CsvSerializer::deserialize(QIODevice &in, Device &device, QString &errors)
         }
         data[lineNumber].diagnostic = diagnostic;
     }
+    return true;
+}
 
-    QTextStream e(&errors);
-    e << QObject::tr("Отчет о восстановлении настроек:") << endl;
+bool CsvSerializer::readControlSlot(QIODevice &in, int &control, QString &errors)
+{
+    bool ok;
+    auto line = in.readLine().split(';');
 
-    for (int slot = 0; slot < kSlotCount; ++slot) {
-        auto &module = *device.module(slot);
-        if (!module.isEmpty()) {
-            if (!module.setFrequency(data[slot].frequency)) {
-                e << QObject::tr("Модуль %1: неверное значение частоты").arg(slot) << endl;
-            }
-            module.setDiagnostic(data[slot].diagnostic);
-            e << QObject::tr("Модуль %1: восстановление завершено").arg(slot) << endl;
-        }
+    if (line.size() < 1) {
+        errors = QObject::tr("не найдено значение контрольного канала (строка 17)");
+        return false;
     }
 
+    control = line[0].toInt(&ok);
+    if (!ok || control < 0 || control >= kSlotCount) {
+        errors = QObject::tr("неверное значение контрольного канала (строка 17)");
+        return false;
+    }
     return true;
 }

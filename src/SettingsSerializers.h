@@ -2,6 +2,8 @@
 
 #include <QVariantMap>
 
+#include "Frequency.h"
+
 class Device;
 class Module;
 class DM500;
@@ -42,4 +44,14 @@ public:
     QString fileExtension() const override;
     void serialize(QIODevice &out, Device &device) override;
     bool deserialize(QIODevice &in, Device &device, QString &errors) override;
+
+private:
+    struct Record
+    {
+        MegaHertzReal frequency;
+        bool diagnostic;
+    };
+
+    bool readModuleParams(QIODevice &in, QString &errors, Record *data);
+    bool readControlSlot(QIODevice &in, int &device, QString &errors);
 };

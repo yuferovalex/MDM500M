@@ -1,4 +1,7 @@
 #include <QFile>
+#include <QSettings>
+#include <QWindowStateChangeEvent>
+#include <QDesktopWidget>
 
 #include "Device.h"
 #include "Modules.h"
@@ -21,6 +24,7 @@ MainWindow::MainWindow()
     ui->version->setText(QString("v%1").arg(QApplication::applicationVersion()));
     onCurrentTabChanged(-1);
     connect(ui->tabs, &QTabWidget::currentChanged, this, &MainWindow::onCurrentTabChanged);
+    readSettings();
     createBuilders();
     searchDevice();
 }
@@ -28,6 +32,7 @@ MainWindow::MainWindow()
 MainWindow::~MainWindow()
 {
     clearTabs();
+    writeSettings();
 }
 
 void MainWindow::createBuilders()
@@ -124,4 +129,29 @@ void MainWindow::clearTabs()
     }
     ui->tabs->hide();
     ui->mainWindowEmptyLbl->show();
+}
+
+void MainWindow::readSettings()
+{
+    QSettings settings("settings.ini", QSettings::Format::IniFormat);
+    auto geometry = settings.value("geometry");
+    if (geometry.isValid()) {
+        restoreGeometry(geometry.toByteArray());
+    }
+    else {
+        setGeometry(
+            QStyle::alignedRect(
+                Qt::LeftToRight,
+                Qt::AlignCenter,
+                size(),
+                qApp->desktop()->availableGeometry()
+            )
+        );
+    }
+}
+
+void MainWindow::writeSettings()
+{
+    QSettings settings("settings.ini", QSettings::Format::IniFormat);
+    settings.setValue("geometry", saveGeometry());
 }

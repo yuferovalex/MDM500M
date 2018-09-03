@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QDir>
 #include <QObject>
 #include <QTextStream>
 
@@ -24,10 +25,12 @@ private:
     QTextStream &out();
     QString date() const;
 
-    void open();
+    bool open();
     void subscribe();
     void reportOldErrors(MDM500M::DeviceErrors log);
     void reportCurrentErrors();
+    QDir getLogPath() const;
+    QString getFileName() const;
 
     QTextStream m_out;
     Device &m_device;

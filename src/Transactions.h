@@ -107,6 +107,7 @@ public:
 signals:
     void started();
     void success();
+    void error(Interfaces::UpdateFirmware::Status whileDoing);
     void statusChanged(Interfaces::UpdateFirmware::Status status);
     void progressChanged(int progress);
     void progressMaxChanged(int progressMax);
@@ -227,8 +228,8 @@ public:
 
 private:
     bool flash(UpdaterProtocol &boot);
-    void waitForFirmware(Protocol &proto);
-    void reboot(Protocol &proto);
+    bool waitForFirmware(Protocol &proto);
+    bool reboot(Protocol &proto);
 
     Firmware m_firmware;
 };

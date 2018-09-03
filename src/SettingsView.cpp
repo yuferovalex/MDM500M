@@ -89,6 +89,30 @@ void SettingsView::updateMainInfo()
     ui->softwareVersion->setText(m_device.softwareVersion().toString());
 }
 
+void SettingsView::onWrongParametersDetected()
+{
+    QMessageBox::critical(
+                this,
+                tr("Ошибка сохранения параметров на устройство"),
+                tr("Во время передачи новых параметров, устройство сообщило, что "
+                   "они не соответсвуют допустимым.\n"
+                   "\n"
+                   "За дополнительной информацией обратитесь к руководству "
+                   "пользователя данной программы."));
+}
+
+void SettingsView::onDeviceCorruptionDetected()
+{
+    QMessageBox::critical(
+                this,
+                tr("Ошибка сохранения параметров на устройство"),
+                tr("Во время передачи новых параметров, устройство сообщило, что "
+                   "запись настроек невозможна из-за повреждения памяти.\n"
+                   "\n"
+                   "За дополнительной информацией обратитесь к руководству "
+                   "пользователя данной программы."));
+}
+
 void SettingsView::initModel()
 {
     using Interfaces::GetAllDeviceInfo;
@@ -169,21 +193,50 @@ void SettingsView::updateFirmware(const Firmware &firmware)
     connect(transaction, &UpdateFirmware::success, this, [=]
     {
         dialog->deleteLater();
-        QMessageBox::information(this, QString(), tr("Устройство успешно перепрошито"));
+        QMessageBox::information(this,
+                                 tr("Обновление программного обеспечения"),
+                                 tr("Программное обеспечение устройства "
+                                    "успешно обновлено."));
         initModel();
     });
     connect(transaction, &UpdateFirmware::failure, this, [=]
     {
         dialog->deleteLater();
-        QMessageBox::critical(this, QString(), tr("Во время перепрошивки произошла ошибка"));
         initModel();
+    });
+    connect(transaction, &UpdateFirmware::error, this, [=](auto whileDoing)
+    {
+        QString text = tr("Произошла ошибка во время %1.\n\n%2");
+        switch (whileDoing) {
+        case UpdateFirmware::WaitForBoot:
+            text = text.arg(tr("ожидания запуска прошивки"))
+                       .arg(tr("Перезагрузите устройство вручную и "
+                               "проверьте его работоспособность."));
+            break;
+        case UpdateFirmware::Reboot:
+            text = text.arg(tr("попытки перезагрузить устройство"))
+                       .arg(tr("За дополнительной информацией обратитесь к "
+                               "руководству пользователя данной программы."));
+            break;
+        case UpdateFirmware::Flash:
+            text = text.arg(tr("передачи прошивки на устройство"))
+                       .arg(tr("За дополнительной информацией обратитесь к "
+                               "руководству пользователя данной программы."));
+            break;
+        default:
+            Q_ASSERT(false);
+            return ;
+        }
+        QMessageBox::warning(this,
+                             tr("Ошибка обновления программного обеспечения"),
+                             text);
     });
     connect(transaction, &UpdateFirmware::statusChanged, dialog, [=](auto status)
     {
         QString text;
         switch (status) {
         case UpdateFirmware::WaitForBoot:
-            text = tr("Ожидание загрузки");
+            text = tr("Ожидание запуска прошивки");
             break;
         case UpdateFirmware::Reboot:
             text = tr("Перезагрузка");
@@ -237,10 +290,10 @@ void SettingsView::setModuleConfig(int slot)
     {
         qDebug("параметры модуля применены");
     });
-    connect(transaction, &SetModuleConfig::wrongParametersDetected, this, []
+    connect(transaction, &SetModuleConfig::wrongParametersDetected, this, [=]
     {
         qDebug("устройство сообщило о неверных значениях параметров (1)");
-        // TODO: ShowMessage("blah-blah-blah");
+        onWrongParametersDetected();
     });
     connect(transaction, &SetModuleConfig::failure, this, [=]
     {
@@ -284,13 +337,13 @@ void SettingsView::on_saveChangesBtn_clicked()
     connect(transaction, &SaveConfigToEprom::wrongParametersDetected, this, [=]
     {
         qDebug("устройство сообщило о неверных значениях параметров (2)");
-        // TODO: ShowMessage(blah-blah-blah);
+        onWrongParametersDetected();
         ui->saveChangesBtn->setEnabled(true);
     });
     connect(transaction, &SaveConfigToEprom::deviceCorruptionDetected, this, [=]
     {
         qDebug("устройство сообщило о повреждении памяти");
-        // TODO: ShowMessage(blah-blah-blah);
+        onDeviceCorruptionDetected();
         ui->saveChangesBtn->setEnabled(true);
     });
     connect(transaction, &SaveConfigToEprom::failure, this, [=]
@@ -336,7 +389,7 @@ void SettingsView::on_updateFirmwareBtn_clicked()
         int answer = QMessageBox::question
         (
             this,
-            "",
+            QString(),
             tr("Вы пытаетесь понизить версию прошивки устройства.\n\n"
                "Продолжить?"),
             QMessageBox::Yes | QMessageBox::No,
@@ -349,7 +402,7 @@ void SettingsView::on_updateFirmwareBtn_clicked()
         int answer = QMessageBox::question
         (
             this,
-            "",
+            QString(),
             tr("Выбранная прошивка уже установлена на устройство.\n\n"
                "Продолжить?"),
             QMessageBox::Yes | QMessageBox::No,
@@ -375,11 +428,11 @@ void SettingsView::on_createBackupBtn_clicked()
     }
     // Открываем файл для записи, если не удалось, то выдаем предупреждение
     QFile file(filename);
-    if (!file.open(QIODevice::WriteOnly)) {
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         QMessageBox::warning(
                     this,
-                    tr("Ошибка"),
-                    tr("Не удалось открыть файл для записи: %1")
+                    tr("Ошибка создания резервной копии настроек"),
+                    tr("Не удалось открыть файл для записи настроек: %1")
                     .arg(file.errorString()));
         return ;
     }
@@ -402,11 +455,11 @@ void SettingsView::on_restoreBackupBtn_clicked()
     }
     // Открываем файл для чтения, если не удалось, то выдаем предупреждение
     QFile file(filename);
-    if (!file.open(QIODevice::ReadOnly)) {
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         QMessageBox::warning(
                     this,
-                    tr("Ошибка"),
-                    tr("Не удалось открыть файл для чтения: %1")
+                    tr("Ошибка восстановления резервной копии настроек"),
+                    tr("Не удалось открыть файл для чтения настроек: %1")
                     .arg(file.errorString()));
         return ;
     }
@@ -417,7 +470,7 @@ void SettingsView::on_restoreBackupBtn_clicked()
     if (!restored) {
         QMessageBox::warning(
                     this,
-                    tr("Ошибка"),
+                    tr("Ошибка восстановления резервной копии настроек"),
                     tr("Во время чтения файла настроек произошла ошибка: %1")
                     .arg(errors));
         return ;

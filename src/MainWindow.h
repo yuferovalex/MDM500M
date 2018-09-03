@@ -29,6 +29,8 @@ private:
     void removeTab(QWidget *settingsView);
     void onCurrentTabChanged(int index);
     void clearTabs();
+    void readSettings();
+    void writeSettings();
 
     std::unordered_map<DeviceType, SettingsViewBuilder> m_builders;
     std::unique_ptr<Ui::MainWindow> ui;

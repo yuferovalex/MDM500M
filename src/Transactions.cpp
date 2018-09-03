@@ -225,20 +225,19 @@ void UpdateFirmware::exec(QSerialPort &port, CancelToken)
     UpdaterProtocol boot(port);
 
     emit started();
-
-    reboot(proto);
-
-    boot.configure();
-    if (!flash(boot)) {
-        return emit failure();
+    bool result = reboot(proto)        // Перезагружаем устройство
+            && boot.configure()        // Настраиваем порт на работу с загрузчиком
+            && flash(boot)             // Передаем прошивку на устройство
+            && proto.configure()       // Настраиваем порт на работу с прошивкой
+            && waitForFirmware(proto)  // Ждем загрузки прошивки
+            && reboot(proto)           // Перезагружаем прошивку
+            && waitForFirmware(proto); // Ждем загрузки прошивки
+    // Сообщаем о результате
+    if (result) {
+        emit success();
+    } else {
+        emit failure();
     }
-
-    proto.configure();
-    waitForFirmware(proto);
-    reboot(proto);
-    waitForFirmware(proto);
-
-    emit success();
 }
 
 bool UpdateFirmware::flash(UpdaterProtocol &boot)
@@ -251,11 +250,13 @@ bool UpdateFirmware::flash(UpdaterProtocol &boot)
     while (requestedPage < m_firmware.pageCount() - 1) {
         requestedPage = boot.waitForRequest();
         if (requestedPage == -1) {
+            emit error(Flash);
             return false;
         }
         qDebug("UpdateFirmware::flash(): запрошена страница %d", (int) requestedPage);
         if (!boot.writePage(requestedPage, m_firmware.pageSizeLog2(),
                             m_firmware.page(requestedPage))) {
+            emit error(Flash);
             return false;
         }
         qDebug("UpdateFirmware::flash(): страница %d передана", (int) requestedPage);
@@ -264,30 +265,38 @@ bool UpdateFirmware::flash(UpdaterProtocol &boot)
     return true;
 }
 
-void UpdateFirmware::waitForFirmware(Protocol &proto)
+bool UpdateFirmware::waitForFirmware(Protocol &proto)
 {
     emit statusChanged(WaitForBoot);
     emit progressMaxChanged(0);
     emit progressChanged(-1);
 
     DeviceInfo info;
-    do {
+    for (int attempt = 0; attempt < 5; ++attempt) {
+        if (proto.get(Protocol::Command::ReadInfo, info)) {
+            qDebug("UpdateFirmware::reboot(): устройство загружено");
+            return true;
+        }
         QThread::msleep(2500);
     }
-    while (!proto.get(Protocol::Command::ReadInfo, info));
-    qDebug("UpdateFirmware::reboot(): устройство загружено");
+    emit error(WaitForBoot);
+    return false;
 }
 
-void UpdateFirmware::reboot(Protocol &proto)
+bool UpdateFirmware::reboot(Protocol &proto)
 {
     emit statusChanged(Reboot);
     emit progressMaxChanged(0);
     emit progressChanged(-1);
 
     Protocol::Error err;
-    proto.set(Protocol::Command::Reboot, err);
-    Q_ASSERT(err == Protocol::Error::Ok);
-    qDebug("UpdateFirmware::reboot(): устройство перезагружено");
+    if (proto.set(Protocol::Command::Reboot, err)) {
+        Q_ASSERT(err == Protocol::Error::Ok);
+        qDebug("UpdateFirmware::reboot(): устройство перезагружено");
+        return true;
+    }
+    emit error(Reboot);
+    return false;
 }
 
 GetAllDeviceInfo *TransactionFabric::getAllDeviceInfo()
